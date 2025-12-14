@@ -193,9 +193,9 @@ class RSIHighFreqXAUUSD:
             print(f"{datetime.now()}: 数据不足，无法生成信号, 数据长度: {len(data)}")
             return None
 
-        # if not is_back_test:
-        #     if not self.is_trading_allowed():
-        #         return None
+        if not is_back_test:
+            if not self.is_trading_allowed():
+                return None
 
         if not is_back_test:
             print(f"{datetime.now()}: 数据形状: {data.shape}, 列: {list(data.columns)}")
