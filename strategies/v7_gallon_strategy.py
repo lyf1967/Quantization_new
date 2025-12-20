@@ -17,13 +17,13 @@ class RSIHighFreqXAUUSD:
                  max_stop_loss=-4.8, # 默认值-4.8，未使用（改为加仓）
                  min_take_profit=1.5,  # 默认值1.5，未使用（改为多级）
                  dynamic_tp_threshold=-0.2, # 默认值-0.2
-                 monitor_time_gap=2, # 默认值59s
+                 monitor_time_gap=59, # 默认值59s
                  time_frame=5,  # 默认值5
                  long_periods=60,  # 长周期周期，默认60
                  long_atr_threshold_high=0.5,  # 长周期ATR高阈值，默认0.5
                  strict_buy_rsi=30,  # 严格买入RSI，默认30
                  strict_sell_rsi=70,  # 严格卖出RSI，默认70
-                 addon_loss_thresholds=[-10, -60],  # 加仓亏损阈值（0.01手美元），第一级-10，第二级-60  [-10, -60]
+                 addon_loss_thresholds=[-15, -270],  # 加仓亏损阈值（0.01手美元），第一级-10，第二级-60  [-10, -60]
                  addon_tp_mins=[1.5, 3, 0.0],  # 各级最小止盈（0.01手美元），初始1.5，第一加仓后3.0，第二后0.0  [1.5, 3.0, 0.0]
                  max_positions = 1,
                  current_initial_volume = 0.01
@@ -333,15 +333,15 @@ class RSIHighFreqXAUUSD:
                             self.current_level += 1
                             self.last_dynamic_stop_loss_time = datetime.now()  # 加仓视为止损触发
 
-                # 休市前平仓：仅当单数==1时
-                if self.is_close_to_market_close() and len(positions) == 1:
-                    print(f"{datetime.now()}: 接近休市，平仓 - 品种: {symbol}")
-                    for pos in positions:
-                        self.handler.close_specific_position(symbol, pos.ticket)
-                    self.max_profit_dict.pop(symbol, None)
-                    self.current_level = 0
-                    self.current_initial_volume = 0.01
-                    self.current_direction = None
+                # # 休市前平仓：仅当单数==1时
+                # if self.is_close_to_market_close() and len(positions) == 1:
+                #     print(f"{datetime.now()}: 接近休市，平仓 - 品种: {symbol}")
+                #     for pos in positions:
+                #         self.handler.close_specific_position(symbol, pos.ticket)
+                #     self.max_profit_dict.pop(symbol, None)
+                #     self.current_level = 0
+                #     self.current_initial_volume = 0.01
+                #     self.current_direction = None
 
                 time.sleep(self.monitor_time_gap)
             except Exception as e:
