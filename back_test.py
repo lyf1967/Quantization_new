@@ -11,7 +11,7 @@ import MetaTrader5 as mt5
 root_path = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(root_path)
 from mt5.mt5_handler import MT5Handler
-from strategies.v6_ma_dynamic_stop_loss_usoil import RSIHighFreqXAUUSD
+from Quantization_new.strategies.garbage.v6_ma_dynamic_stop_loss_usoil import RSIHighFreqXAUUSD
 
 class Backtester:
     def __init__(self, symbol, time_frame=5, initial_balance=10000.0, volume=0.1, lever=10,

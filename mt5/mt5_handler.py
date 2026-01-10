@@ -434,15 +434,15 @@ class MT5Handler:
             def trading_loop():
                 self.strategy_instance = None
                 if hasattr(strategy_module, 'UltraHighFreqXAUUSD'):
-                    self.strategy_instance = strategy_module.UltraHighFreqXAUUSD(handler=self, dynamic_sl_enabled=dynamic_sl, dynamic_tp_enabled=dynamic_tp)
+                    self.strategy_instance = strategy_module.UltraHighFreqXAUUSD(handler=self, dynamic_sl_enabled=dynamic_sl, dynamic_tp_enabled=dynamic_tp, current_initial_volume=volume)
                 elif hasattr(strategy_module, 'HighFreqXAUUSD'):
-                    self.strategy_instance = strategy_module.HighFreqXAUUSD(handler=self, dynamic_sl_enabled=dynamic_sl, dynamic_tp_enabled=dynamic_tp)
+                    self.strategy_instance = strategy_module.HighFreqXAUUSD(handler=self, dynamic_sl_enabled=dynamic_sl, dynamic_tp_enabled=dynamic_tp, current_initial_volume=volume)
                 elif hasattr(strategy_module, 'RSIHighFreqXAUUSD'):
                     self.strategy_instance = strategy_module.RSIHighFreqXAUUSD(handler=self, dynamic_sl_enabled=dynamic_sl, dynamic_tp_enabled=dynamic_tp, current_initial_volume=volume)
                 
                 # 如果启用动态止损或动态止盈，启动监控
                 if (dynamic_sl or dynamic_tp) and self.strategy_instance and hasattr(self.strategy_instance, 'start_dynamic_sl_monitor'):
-                    self.strategy_instance.start_dynamic_sl_monitor(symbol)
+                    self.strategy_instance.start_dynamic_sl_monitor(symbol, current_initial_volume=volume)
                 
                 while not self.stop_trading_flag:
                     try:
@@ -455,7 +455,7 @@ class MT5Handler:
                         if self.strategy_instance:
                             signal = self.strategy_instance.get_signal(data, symbol)
                         else:
-                            signal = strategy_module.get_signal(data, symbol, handler=self, dynamic_sl_enabled=dynamic_sl, dynamic_tp_enabled=dynamic_tp)
+                            signal = strategy_module.get_signal(data, symbol, handler=self, dynamic_sl_enabled=dynamic_sl, dynamic_tp_enabled=dynamic_tp, current_initial_volume=volume)
                             
                         if signal == 'buy':
                             if self.execute_trade(symbol, volume, sl, tp, 'buy', dynamic_sl=dynamic_sl, dynamic_tp=dynamic_tp):
