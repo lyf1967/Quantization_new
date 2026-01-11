@@ -23,9 +23,9 @@ class RSIHighFreqXAUUSD:
                  long_atr_threshold_high=0.3,  # 长周期ATR高阈值，默认0.3
                  strict_buy_rsi=54,  # 严格买入RSI，默认30
                  strict_sell_rsi=55,  # 严格卖出RSI，默认70
-                 addon_loss_thresholds=[-0.4, -0.6],  # 加仓亏损阈值（0.01手美元），第一级-15，第二级-330  [-10, -330]
+                 addon_loss_thresholds=[-0.2, -1],  # 加仓亏损阈值（0.01手美元），第一级-15，第二级-330  [-10, -330]
                  add_times_list = [3, 2], # 加仓倍数：第一次加仓3倍，第二次加仓2倍
-                 addon_tp_mins=[0.3, 0.4, 0.5],  # 各级最小止盈（0.01手美元），初始1.5，第一加仓后累计4.8，第二后4  [1.5, 4.0, 4.8]
+                 addon_tp_mins=[0.1, 0.2, 0.3],  # 各级最小止盈（0.01手美元），初始1.5，第一加仓后累计4.8，第二后4  [1.5, 4.0, 4.8]
                  max_positions = 1,
                  current_initial_volume = 0.01
                  ):

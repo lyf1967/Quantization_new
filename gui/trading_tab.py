@@ -331,9 +331,9 @@ class TradingTab(QMainWindow):
         dynamic_sl = self.dynamic_sl.isChecked()
         dynamic_tp = self.dynamic_tp.isChecked()
 
-        if not strategy_path:
-            self.status_bar.showMessage("请选择策略文件", 5000)
-            return
+        # if not strategy_path:
+        #     self.status_bar.showMessage("请选择策略文件", 5000)
+        #     return
         if not symbol:
             self.status_bar.showMessage("请选择交易品种", 5000)
             return

@@ -5,6 +5,11 @@ from datetime import datetime, timedelta
 import importlib.util
 import threading
 import numpy as np
+import sys
+root_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(root_path)
+from strategies.v8_treble_first_add_strategy import *
+
 
 class MT5Handler:
     def __init__(self):
@@ -415,30 +420,34 @@ class MT5Handler:
             return False
             
         try:
-            if not os.path.exists(strategy_path):
-                print(f"{datetime.now()}: 自动交易启动失败 - 策略文件 {strategy_path} 不存在")
-                return False
+            # if not os.path.exists(strategy_path):
+            #     print(f"{datetime.now()}: 自动交易启动失败 - 策略文件 {strategy_path} 不存在")
+            #     return False
+            #
+            # spec = importlib.util.spec_from_file_location("strategy", strategy_path)
+            # if spec is None:
+            #     print(f"{datetime.now()}: 自动交易启动失败 - 无法加载策略文件")
+            #     return False
                 
-            spec = importlib.util.spec_from_file_location("strategy", strategy_path)
-            if spec is None:
-                print(f"{datetime.now()}: 自动交易启动失败 - 无法加载策略文件")
-                return False
-                
-            strategy_module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(strategy_module)
-            
-            if not hasattr(strategy_module, 'get_signal') and not hasattr(strategy_module, 'UltraHighFreqXAUUSD') and not hasattr(strategy_module, 'HighFreqXAUUSD'):
-                print(f"{datetime.now()}: 自动交易启动失败 - 策略文件缺少get_signal函数或支持的类")
-                return False
+            # strategy_module = importlib.util.module_from_spec(spec)
+            # spec.loader.exec_module(strategy_module)
+
+            # if not hasattr(strategy_module, 'get_signal') and not hasattr(strategy_module, 'UltraHighFreqXAUUSD') and not hasattr(strategy_module, 'HighFreqXAUUSD'):
+            #     print(f"{datetime.now()}: 自动交易启动失败 - 策略文件缺少get_signal函数或支持的类")
+            #     return False
                 
             def trading_loop():
-                self.strategy_instance = None
-                if hasattr(strategy_module, 'UltraHighFreqXAUUSD'):
-                    self.strategy_instance = strategy_module.UltraHighFreqXAUUSD(handler=self, dynamic_sl_enabled=dynamic_sl, dynamic_tp_enabled=dynamic_tp, current_initial_volume=volume)
-                elif hasattr(strategy_module, 'HighFreqXAUUSD'):
-                    self.strategy_instance = strategy_module.HighFreqXAUUSD(handler=self, dynamic_sl_enabled=dynamic_sl, dynamic_tp_enabled=dynamic_tp, current_initial_volume=volume)
-                elif hasattr(strategy_module, 'RSIHighFreqXAUUSD'):
-                    self.strategy_instance = strategy_module.RSIHighFreqXAUUSD(handler=self, dynamic_sl_enabled=dynamic_sl, dynamic_tp_enabled=dynamic_tp, current_initial_volume=volume)
+                # self.strategy_instance = None
+                self.strategy_instance = RSIHighFreqXAUUSD(handler=self, dynamic_sl_enabled=dynamic_sl,
+                                                                           dynamic_tp_enabled=dynamic_tp,
+                                                                           current_initial_volume=volume)
+
+                # if hasattr(strategy_module, 'UltraHighFreqXAUUSD'):
+                #     self.strategy_instance = strategy_module.UltraHighFreqXAUUSD(handler=self, dynamic_sl_enabled=dynamic_sl, dynamic_tp_enabled=dynamic_tp, current_initial_volume=volume)
+                # elif hasattr(strategy_module, 'HighFreqXAUUSD'):
+                #     self.strategy_instance = strategy_module.HighFreqXAUUSD(handler=self, dynamic_sl_enabled=dynamic_sl, dynamic_tp_enabled=dynamic_tp, current_initial_volume=volume)
+                # elif hasattr(strategy_module, 'RSIHighFreqXAUUSD'):
+                #     self.strategy_instance = strategy_module.RSIHighFreqXAUUSD(handler=self, dynamic_sl_enabled=dynamic_sl, dynamic_tp_enabled=dynamic_tp, current_initial_volume=volume)
                 
                 # 如果启用动态止损或动态止盈，启动监控
                 if (dynamic_sl or dynamic_tp) and self.strategy_instance and hasattr(self.strategy_instance, 'start_dynamic_sl_monitor'):
@@ -454,8 +463,8 @@ class MT5Handler:
                         print(f"{datetime.now()}: 调用策略 - 品种: {symbol}, 数据行数: {len(data)}")
                         if self.strategy_instance:
                             signal = self.strategy_instance.get_signal(data, symbol)
-                        else:
-                            signal = strategy_module.get_signal(data, symbol, handler=self, dynamic_sl_enabled=dynamic_sl, dynamic_tp_enabled=dynamic_tp, current_initial_volume=volume)
+                        # else:
+                        #     signal = strategy_module.get_signal(data, symbol, handler=self, dynamic_sl_enabled=dynamic_sl, dynamic_tp_enabled=dynamic_tp, current_initial_volume=volume)
                             
                         if signal == 'buy':
                             if self.execute_trade(symbol, volume, sl, tp, 'buy', dynamic_sl=dynamic_sl, dynamic_tp=dynamic_tp):
