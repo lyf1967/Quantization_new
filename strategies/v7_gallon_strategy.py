@@ -77,23 +77,23 @@ class RSIHighFreqXAUUSD:
                 self.last_dynamic_sl_time = self.last_dynamic_take_profit_time
                 cooling_time_seconds = self.take_profit_cooling_time_seconds
 
-            print(f"self.last_dynamic_stop_loss_time: {self.last_dynamic_stop_loss_time}, self.last_dynamic_take_profit_time: {self.last_dynamic_take_profit_time}")
-            print(f"cooling_time_seconds = {cooling_time_seconds}")
+            # print(f"self.last_dynamic_stop_loss_time: {self.last_dynamic_stop_loss_time}, self.last_dynamic_take_profit_time: {self.last_dynamic_take_profit_time}")
+            # print(f"cooling_time_seconds = {cooling_time_seconds}")
 
             current_time = datetime.now()
             elapsed = (current_time - self.last_dynamic_sl_time).total_seconds()
             if elapsed < cooling_time_seconds:
-                print(f"{datetime.now()}: 处于冷静期，剩余 {cooling_time_seconds - elapsed:.0f} 秒，暂停生成信号")
+                # print(f"{datetime.now()}: 处于冷静期，剩余 {cooling_time_seconds - elapsed:.0f} 秒，暂停生成信号")
                 return True
             else:
                 if elapsed >= cooling_time_seconds and self.last_dynamic_sl_time is not None:
-                    print(f"{datetime.now()}: 冷静期结束，继续生成交易信号")
+                    # print(f"{datetime.now()}: 冷静期结束，继续生成交易信号")
                     self.last_dynamic_sl_time = None  # 重置冷静期
                     self.last_dynamic_stop_loss_time = None
                     self.last_dynamic_take_profit_time = None
 
                 return False
-        print("lock is unuseful, please attention.")
+        # print("lock is unuseful, please attention.")
         return None
 
     def is_market_open(self):
@@ -133,7 +133,7 @@ class RSIHighFreqXAUUSD:
             if now >= open_time:
                 elapsed = (now - open_time).total_seconds()
                 if elapsed < 70 * 60:
-                    print(f"{now}: 开市后未满70分钟，剩余 {70 * 60 - elapsed:.0f} 秒，暂停生成信号")
+                    # print(f"{now}: 开市后未满70分钟，剩余 {70 * 60 - elapsed:.0f} 秒，暂停生成信号")
                     return False
         return True
 
@@ -162,7 +162,7 @@ class RSIHighFreqXAUUSD:
 
         rates = mt5.copy_rates_from_pos(symbol, timeframe, 0, count)
         if rates is None or len(rates) == 0:
-            print(f"{datetime.now()}: 无法获取K线数据 - 品种: {symbol}, 时间框架: {timeframe}, 数量: {count}")
+            # print(f"{datetime.now()}: 无法获取K线数据 - 品种: {symbol}, 时间框架: {timeframe}, 数量: {count}")
             return pd.DataFrame()
 
         df = pd.DataFrame(rates)
@@ -171,18 +171,18 @@ class RSIHighFreqXAUUSD:
 
         required_columns = ['open', 'high', 'low', 'close', 'tick_volume']
         if not all(col in df.columns for col in required_columns):
-            print(f"{datetime.now()}: K线数据缺少必要列 - 品种: {symbol}, 现有列: {list(df.columns)}")
+            # print(f"{datetime.now()}: K线数据缺少必要列 - 品种: {symbol}, 现有列: {list(df.columns)}")
             return pd.DataFrame()
 
         df['close'] = pd.to_numeric(df['close'], errors='coerce')
         if df['close'].isnull().any() or not np.all(np.isfinite(df['close'])):
-            print(f"{datetime.now()}: K线数据无效 - 品种: {symbol}, close列包含NaN或非有限值: {df['close'].tail(5).to_dict()}")
+            # print(f"{datetime.now()}: K线数据无效 - 品种: {symbol}, close列包含NaN或非有限值: {df['close'].tail(5).to_dict()}")
             df['close'] = df['close'].fillna(method='ffill')
             if df['close'].isnull().any():
-                print(f"{datetime.now()}: 清洗后仍包含NaN - 品种: {symbol}")
+                # print(f"{datetime.now()}: 清洗后仍包含NaN - 品种: {symbol}")
                 return pd.DataFrame()
 
-        print(f"{datetime.now()}: 获取K线数据成功 - 品种: {symbol}, 行数: {len(df)}, 前两行: {df['close'].tail(2).to_dict()}")
+        # print(f"{datetime.now()}: 获取K线数据成功 - 品种: {symbol}, 行数: {len(df)}, 前两行: {df['close'].tail(2).to_dict()}")
         return df[required_columns]
 
     def get_signal(self, data, symbol=None, is_reload_data=True, is_back_test=False):
@@ -192,7 +192,7 @@ class RSIHighFreqXAUUSD:
             data = self.get_ohlc_data(symbol, timeframe=self.time_frame, count=count)
 
         if len(data) < max(self.periods, self.long_periods):
-            print(f"{datetime.now()}: 数据不足，无法生成信号, 数据长度: {len(data)}")
+            # print(f"{datetime.now()}: 数据不足，无法生成信号, 数据长度: {len(data)}")
             return None
 
         if not is_back_test:
@@ -200,49 +200,49 @@ class RSIHighFreqXAUUSD:
                 return None
 
         if not is_back_test:
-            print(f"{datetime.now()}: 数据形状: {data.shape}, 列: {list(data.columns)}")
+            # print(f"{datetime.now()}: 数据形状: {data.shape}, 列: {list(data.columns)}")
             print(f"{datetime.now()}: 前两行数据: {data[['close']].tail(2).to_dict()}")
         else:
-            print(f"{data.index[-1]}: 数据形状: {data.shape}, 列: {list(data.columns)}")
-
+            # print(f"{data.index[-1]}: 数据形状: {data.shape}, 列: {list(data.columns)}")
+            print()
         try:
             rsi = self.calculate_rsi(data, periods=self.periods)
             current_rsi = rsi.iloc[-1]
             if pd.isna(current_rsi):
-                print(f"{datetime.now()}: RSI计算结果为NaN")
+                # print(f"{datetime.now()}: RSI计算结果为NaN")
                 return None
             current_rsi = float(current_rsi)
         except Exception as e:
-            print(f"{datetime.now()}: RSI计算失败 - 错误: {e}")
+            # print(f"{datetime.now()}: RSI计算失败 - 错误: {e}")
             return None
 
         atr = self.calculate_atr(data, periods=self.periods)
-        print(f"atr:{atr.iloc[-1]}")
+        # print(f"atr:{atr.iloc[-1]}")
         if atr.iloc[-1] < self.atr_threshold:
-            print(f"atr too small")
+            # print(f"atr too small")
             return None
 
         # 长周期ATR检测
         long_atr = self.calculate_atr(data, periods=self.long_periods).iloc[-1]
-        print(f"long_atr:{long_atr}")
+        # print(f"long_atr:{long_atr}")
         if long_atr > self.long_atr_threshold_high:
             effective_buy_rsi = self.strict_buy_rsi
             effective_sell_rsi = self.strict_sell_rsi
-            print(f"长周期ATR高，使用严格RSI: buy<{effective_buy_rsi}, sell>{effective_sell_rsi}")
+            # print(f"长周期ATR高，使用严格RSI: buy<{effective_buy_rsi}, sell>{effective_sell_rsi}")
         else:
             effective_buy_rsi = self.buy_rsi
             effective_sell_rsi = self.sell_rsi
 
         if not 0 <= current_rsi <= 100:
-            print(f"{datetime.now()}: RSI值无效 - RSI: {current_rsi}")
+            # print(f"{datetime.now()}: RSI值无效 - RSI: {current_rsi}")
             return None
 
         signal_type = '买入' if current_rsi < effective_buy_rsi else '卖出' if current_rsi > effective_sell_rsi else None
-        if not is_back_test:
-            log_message = (f"{datetime.now()}: 当前RSI: {current_rsi:.2f}, 信号: {signal_type}")
-        else:
-            log_message = (f"{data.index[-1]}: 当前RSI: {current_rsi:.2f}, 信号: {signal_type}")
-        print(log_message)
+        # if not is_back_test:
+        #     log_message = (f"{datetime.now()}: 当前RSI: {current_rsi:.2f}, 信号: {signal_type}")
+        # else:
+        #     log_message = (f"{data.index[-1]}: 当前RSI: {current_rsi:.2f}, 信号: {signal_type}")
+        # print(log_message)
         if not is_back_test and (not signal_type):
             time.sleep(2)
 
@@ -255,10 +255,10 @@ class RSIHighFreqXAUUSD:
         positions = mt5.positions_get()
 
         if len(positions) >= self.max_positions:
-            if not is_back_test:
-                print(f"{datetime.now()}: 持仓数量达到上限 ({self.max_positions})，暂停开仓")
-            else:
-                print(f"{data.index[-1]}: 持仓数量达到上限 ({self.max_positions})，暂停开仓")
+            # if not is_back_test:
+            #     print(f"{datetime.now()}: 持仓数量达到上限 ({self.max_positions})，暂停开仓")
+            # else:
+            #     print(f"{data.index[-1]}: 持仓数量达到上限 ({self.max_positions})，暂停开仓")
             return None
 
         if symbol is None:
@@ -269,16 +269,16 @@ class RSIHighFreqXAUUSD:
             return None
 
         if current_rsi > effective_sell_rsi:
-            if not is_back_test:
-                print(f"{datetime.now()}: 卖出信号 - 品种: {symbol}, RSI: {current_rsi:.2f}")
-            else:
-                print(f"{data.index[-1]}: 卖出信号 - 品种: {symbol}, RSI: {current_rsi:.2f}")
+            # if not is_back_test:
+            #     print(f"{datetime.now()}: 卖出信号 - 品种: {symbol}, RSI: {current_rsi:.2f}")
+            # else:
+            #     print(f"{data.index[-1]}: 卖出信号 - 品种: {symbol}, RSI: {current_rsi:.2f}")
             return 'sell'
         elif current_rsi < effective_buy_rsi:
-            if not is_back_test:
-                print(f"{datetime.now()}: 买入信号 - 品种: {symbol}, RSI: {current_rsi:.2f}")
-            else:
-                print(f"{data.index[-1]}: 买入信号 - 品种: {symbol}, RSI: {current_rsi:.2f}")
+            # if not is_back_test:
+            #     print(f"{datetime.now()}: 买入信号 - 品种: {symbol}, RSI: {current_rsi:.2f}")
+            # else:
+            #     print(f"{data.index[-1]}: 买入信号 - 品种: {symbol}, RSI: {current_rsi:.2f}")
             return 'buy'
 
         return None
@@ -296,7 +296,7 @@ class RSIHighFreqXAUUSD:
                 if self.current_direction is None:
                     self.current_direction = pos_type
                 elif self.current_direction != pos_type:
-                    print(f"{datetime.now()}: 检测到混合方向持仓，跳过监控")
+                    # print(f"{datetime.now()}: 检测到混合方向持仓，跳过监控")
                     time.sleep(self.monitor_time_gap)
                     continue
 
@@ -315,7 +315,7 @@ class RSIHighFreqXAUUSD:
                 if self.dynamic_tp_enabled and total_profit >= self.addon_tp_mins[self.current_level] * scale:
                     profit_change_rate = (total_profit - self.max_profit_dict[symbol]) / self.max_profit_dict[symbol] if self.max_profit_dict[symbol] > 0 else 0
                     if profit_change_rate <= self.dynamic_tp_threshold:
-                        print(f"{datetime.now()}: 触发动态止盈 - 品种: {symbol}, 总利润: {total_profit:.2f}, 回落率: {profit_change_rate:.2%}")
+                        # print(f"{datetime.now()}: 触发动态止盈 - 品种: {symbol}, 总利润: {total_profit:.2f}, 回落率: {profit_change_rate:.2%}")
                         for pos in positions:
                             self.handler.close_specific_position(symbol, pos.ticket)
                         self.last_dynamic_take_profit_time = datetime.now()
@@ -331,7 +331,7 @@ class RSIHighFreqXAUUSD:
                         add_times = self.add_times_list[self.current_level]
                         if total_profit <= loss_threshold:
                             add_volume = add_times * total_volume
-                            print(f"{datetime.now()}: 触发加仓 - 级别: {self.current_level+1}, 品种: {symbol}, 亏损: {total_profit:.2f}, 加仓手数: {add_volume}")
+                            # print(f"{datetime.now()}: 触发加仓 - 级别: {self.current_level+1}, 品种: {symbol}, 亏损: {total_profit:.2f}, 加仓手数: {add_volume}")
                             self.handler.execute_trade(symbol, add_volume, 0, 0, pos_type, self.dynamic_sl_enabled, self.dynamic_tp_enabled)  # 加仓同方向，无SL/TP
                             self.current_level += 1
                             self.last_dynamic_stop_loss_time = datetime.now()  # 加仓视为止损触发

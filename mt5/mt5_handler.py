@@ -8,7 +8,7 @@ import numpy as np
 import sys
 root_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(root_path)
-from strategies.v8_treble_first_add_strategy import *
+from strategies.v7_gallon_strategy import *
 
 
 class MT5Handler:
