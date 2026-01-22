@@ -13,7 +13,7 @@ MAC_WHITELIST = ["70:A6:CC:78:2B:70",  # 本机
                  "50:EB:71:5F:94:FC",  # 悟
                  "CC:F9:E4:B6:37:85", # 悟
                  # "74:56:3C:4A:09:2A", # 悟朋友
-                 "E4-CE-8F-07-47-D6", # 悟朋友
+                 "E4:CE:8F:07:47:D6", # 悟朋友
                  ]  # Add authorized MAC addresses here
 
 def get_api_time():
