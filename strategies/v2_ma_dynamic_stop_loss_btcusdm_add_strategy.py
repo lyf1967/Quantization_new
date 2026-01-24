@@ -6,32 +6,33 @@ import threading
 import numpy as np
 
 
+
 class RSIHighFreqXAUUSD:
     def __init__(self, handler=None, dynamic_sl_enabled=True, dynamic_tp_enabled=True,
-                 buy_rsi=54,  # 默认值35
-                 sell_rsi=55,  # 默认值65
-                 periods=14,  # 默认值14
+                 buy_rsi=35,  # 默认值35
+                 sell_rsi=65,  # 默认值65
+                 periods=30,  # 默认值30
                  atr_threshold=0.1, # 默认值0.1
-                 stop_loss_cooling=30, # 默认值45*60
-                 take_profit_cooling=30, # 默认值45*60
-                 max_stop_loss=-4.8, # 默认值-4.8，未使用（改为加仓）
-                 min_take_profit=1.5,  # 默认值1.5，未使用（改为多级）
+                 stop_loss_cooling=30*60, # 默认值30*60
+                 take_profit_cooling=5*60, # 默认值5*60
+                 max_stop_loss=-20, # 默认值-20，未使用（改为加仓）
+                 min_take_profit=2,  # 默认值2，未使用（改为多级）
                  dynamic_tp_threshold=-0.2, # 默认值-0.2
-                 monitor_time_gap=5, # 默认值59s
-                 time_frame=5,  # 默认值5
+                 monitor_time_gap=30, # 默认值59s
+                 time_frame=1,  # 默认值1
                  long_periods=60,  # 长周期周期，默认60
                  long_atr_threshold_high=0.3,  # 长周期ATR高阈值，默认0.3
-                 strict_buy_rsi=54,  # 严格买入RSI，默认30
-                 strict_sell_rsi=55,  # 严格卖出RSI，默认70
-                 addon_loss_thresholds=[-0.2, -1],  # 加仓亏损阈值（0.01手美元），第一级-15，第二级-330  [-10, -330]
-                 add_times_list = [3, 2], # 加仓倍数：第一次加仓3倍，第二次加仓2倍
-                 addon_tp_mins=[0.1, 0.2, 0.3],  # 各级最小止盈（0.01手美元），初始1.5，第一加仓后累计4.8，第二后4  [1.5, 4.0, 4.8]
+                 strict_buy_rsi=30,  # 严格买入RSI，默认30
+                 strict_sell_rsi=70,  # 严格卖出RSI，默认70
+                 addon_loss_thresholds=[-30, -400],  # 加仓亏损阈值（0.01手美元），第一级-30，第二级-400  [-30, -400]
+                 add_times_list = [2, 2], # 加仓倍数：第一次加仓2倍，第二次加仓2倍
+                 addon_tp_mins=[2, 3*1, 9*0.5],  # 各级最小止盈（0.01手美元），初始2，第一加仓后3.0*1，第二后9*0.5  [2, 3.0*1, 9*0.5]
                  max_positions = 1,
                  current_initial_volume = 0.01
                  ):
         self.handler = handler
         self.max_positions = max_positions # 移除限制
-        self.default_symbol = "USOILm"  # 默认交易品种，根据实际调整
+        self.default_symbol = "BTCUSDm"  # 默认交易品种，根据实际调整
         self.position_open_times = {}  # 存储 {ticket: {"open_time": time, "prev_price": price}}
         self.dynamic_sl_thread = None  # 动态止损线程
         self.stop_dynamic_sl_flag = False  # 停止动态止损标志
@@ -196,8 +197,8 @@ class RSIHighFreqXAUUSD:
             return None
 
         # if not is_back_test:
-            # if not self.is_trading_allowed():
-                # return None
+        #     if not self.is_trading_allowed():
+        #         return None
 
         if not is_back_test:
             print(f"{datetime.now()}: 数据形状: {data.shape}, 列: {list(data.columns)}")
@@ -216,22 +217,24 @@ class RSIHighFreqXAUUSD:
             print(f"{datetime.now()}: RSI计算失败 - 错误: {e}")
             return None
 
-        atr = self.calculate_atr(data, periods=self.periods)
-        print(f"atr:{atr.iloc[-1]}")
-        if atr.iloc[-1] < self.atr_threshold:
-            print(f"atr too small")
-            return None
+        # atr = self.calculate_atr(data, periods=self.periods)
+        # print(f"atr:{atr.iloc[-1]}")
+        # if atr.iloc[-1] < self.atr_threshold:
+        #     print(f"atr too small")
+        #     return None
 
         # 长周期ATR检测
-        long_atr = self.calculate_atr(data, periods=self.long_periods).iloc[-1]
-        print(f"long_atr:{long_atr}")
-        if long_atr > self.long_atr_threshold_high:
-            effective_buy_rsi = self.strict_buy_rsi
-            effective_sell_rsi = self.strict_sell_rsi
-            print(f"长周期ATR高，使用严格RSI: buy<{effective_buy_rsi}, sell>{effective_sell_rsi}")
-        else:
-            effective_buy_rsi = self.buy_rsi
-            effective_sell_rsi = self.sell_rsi
+        # long_atr = self.calculate_atr(data, periods=self.long_periods).iloc[-1]
+        # print(f"long_atr:{long_atr}")
+        # if long_atr > self.long_atr_threshold_high:
+        #     effective_buy_rsi = self.strict_buy_rsi
+        #     effective_sell_rsi = self.strict_sell_rsi
+        #     print(f"长周期ATR高，使用严格RSI: buy<{effective_buy_rsi}, sell>{effective_sell_rsi}")
+        # else:
+        #     effective_buy_rsi = self.buy_rsi
+        #     effective_sell_rsi = self.sell_rsi
+        effective_buy_rsi = self.buy_rsi
+        effective_sell_rsi = self.sell_rsi
 
         if not 0 <= current_rsi <= 100:
             print(f"{datetime.now()}: RSI值无效 - RSI: {current_rsi}")
@@ -290,6 +293,8 @@ class RSIHighFreqXAUUSD:
                 positions = mt5.positions_get(symbol=symbol)
                 if not positions:
                     time.sleep(self.monitor_time_gap)
+                    self.max_profit_dict = {}
+                    self.current_level = 0
                     continue
 
                 pos_type = 'buy' if positions[0].type == mt5.ORDER_TYPE_BUY else 'sell'
