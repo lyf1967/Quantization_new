@@ -68,33 +68,35 @@ class RSIHighFreqXAUUSD:
 
     def is_in_cooling_period(self):
         """检查是否处于冷静期"""
-        with self.lock:  # 新增：使用锁保护整个检查和重置逻辑
-            if self.last_dynamic_stop_loss_time is None and self.last_dynamic_take_profit_time is None:
-                return False
-            self.last_dynamic_sl_time = self.last_dynamic_stop_loss_time
-            cooling_time_seconds = self.stop_loss_cooling_time_seconds
-            if self.last_dynamic_take_profit_time is not None:
-                self.last_dynamic_sl_time = self.last_dynamic_take_profit_time
-                cooling_time_seconds = self.take_profit_cooling_time_seconds
+        try:
+            with self.lock:  # 新增：使用锁保护整个检查和重置逻辑
+                if self.last_dynamic_stop_loss_time is None and self.last_dynamic_take_profit_time is None:
+                    return False
+                self.last_dynamic_sl_time = self.last_dynamic_stop_loss_time
+                cooling_time_seconds = self.stop_loss_cooling_time_seconds
+                if self.last_dynamic_take_profit_time is not None:
+                    self.last_dynamic_sl_time = self.last_dynamic_take_profit_time
+                    cooling_time_seconds = self.take_profit_cooling_time_seconds
 
-            print(f"self.last_dynamic_stop_loss_time: {self.last_dynamic_stop_loss_time}, self.last_dynamic_take_profit_time: {self.last_dynamic_take_profit_time}")
-            print(f"cooling_time_seconds = {cooling_time_seconds}")
+                print(f"self.last_dynamic_stop_loss_time: {self.last_dynamic_stop_loss_time}, self.last_dynamic_take_profit_time: {self.last_dynamic_take_profit_time}")
+                print(f"cooling_time_seconds = {cooling_time_seconds}")
 
-            current_time = datetime.now()
-            elapsed = (current_time - self.last_dynamic_sl_time).total_seconds()
-            if elapsed < cooling_time_seconds:
-                print(f"{datetime.now()}: 处于冷静期，剩余 {cooling_time_seconds - elapsed:.0f} 秒，暂停生成信号")
-                return True
-            else:
-                if elapsed >= cooling_time_seconds and self.last_dynamic_sl_time is not None:
-                    print(f"{datetime.now()}: 冷静期结束，继续生成交易信号")
-                    self.last_dynamic_sl_time = None  # 重置冷静期
-                    self.last_dynamic_stop_loss_time = None
-                    self.last_dynamic_take_profit_time = None
+                current_time = datetime.now()
+                elapsed = (current_time - self.last_dynamic_sl_time).total_seconds()
+                if elapsed < cooling_time_seconds:
+                    print(f"{datetime.now()}: 处于冷静期，剩余 {cooling_time_seconds - elapsed:.0f} 秒，暂停生成信号")
+                    return True
+                else:
+                    if elapsed >= cooling_time_seconds and self.last_dynamic_sl_time is not None:
+                        print(f"{datetime.now()}: 冷静期结束，继续生成交易信号")
+                        self.last_dynamic_sl_time = None  # 重置冷静期
+                        self.last_dynamic_stop_loss_time = None
+                        self.last_dynamic_take_profit_time = None
 
-                return False
-        print("lock is unuseful, please attention.")
-        return None
+                    return False
+        # 锁失效
+        except:
+            raise RuntimeError("冷静期判断，锁失效")
 
     def is_market_open(self):
         """检查市场是否开市（北京时间，周一6:10开启，周六4:40停止）"""
