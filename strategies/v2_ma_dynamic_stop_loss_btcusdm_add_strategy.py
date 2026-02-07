@@ -293,8 +293,8 @@ class RSIHighFreqXAUUSD:
                 positions = mt5.positions_get(symbol=symbol)
                 if not positions:
                     time.sleep(self.monitor_time_gap)
-                    self.max_profit_dict = {}
-                    self.current_level = 0
+                    # self.max_profit_dict = {}
+                    # self.current_level = 0
                     continue
 
                 pos_type = 'buy' if positions[0].type == mt5.ORDER_TYPE_BUY else 'sell'
