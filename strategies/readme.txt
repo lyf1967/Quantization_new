@@ -1,5 +1,0 @@
-v2_ma_dynamic_stop_loss_btcusdm.py： 比特币老策略，1min线，仅考虑rsi
-v2_ma_dynamic_stop_loss_btcusdm_add_strategy.py: 比特币加仓策略，双倍加仓
-v7_gallon_strategy_usoil.py： 石油加仓策略，双倍加仓
-v8_treble_first_add_strategy_usoil.py： 石油加仓策略，先三倍再两倍加仓
-v8_treble_first_add_strategy_test_btcusdm.py： 使用比特币测试石油加仓策略

@@ -225,11 +225,17 @@ class TradingTab(QMainWindow):
         self.total_profit_label = QLabel("总盈亏: $0.00")
         self.history_profit_label = QLabel("历史交易盈亏: $0.00")
         self.trade_count_label = QLabel("交易次数: 0")
+        self.rsi_threshold_label = QLabel("RSI阈值: 买入 35, 卖出 65")
+        self.atr_threshold_label = QLabel("ATR阈值: 0.002")
+        self.cooling_period_label = QLabel("冷静期: 600秒")
         stats_layout.addWidget(self.initial_balance_label)
         stats_layout.addWidget(self.win_rate_label)
         stats_layout.addWidget(self.total_profit_label)
         stats_layout.addWidget(self.history_profit_label)
         stats_layout.addWidget(self.trade_count_label)
+        stats_layout.addWidget(self.rsi_threshold_label)
+        stats_layout.addWidget(self.atr_threshold_label)
+        stats_layout.addWidget(self.cooling_period_label)
         stats_widget = QFrame()
         stats_widget.setLayout(stats_layout)
 
@@ -311,7 +317,7 @@ class TradingTab(QMainWindow):
                 spec = importlib.util.spec_from_file_location("strategy", file_path)
                 strategy_module = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(strategy_module)
-                if hasattr(strategy_module, 'UltraHighFreqXAUUSD') or hasattr(strategy_module, 'HighFreqXAUUSD') or hasattr(strategy_module, 'get_signal'):
+                if hasattr(strategy_module, 'UltraHighFreqXAUUSD') or hasattr(strategy_module, 'HighFreqXAUUSD') or hasattr(strategy_module, 'RSIHighFreqXAUUSD') or hasattr(strategy_module, 'get_signal'):
                     self.strategy_path.setText(file_path)
                     self.status_bar.showMessage("策略文件加载成功", 5000)
                 else:
@@ -326,8 +332,8 @@ class TradingTab(QMainWindow):
         strategy_path = self.strategy_path.text()
         symbol = self.symbol_combo.currentText()
         volume = self.volume.value()
-        sl = self.sl.value() if not self.dynamic_sl.isChecked() else 0  # 动态止损时SL设为0
-        tp = self.tp.value() if not self.dynamic_tp.isChecked() else 0  # 动态止盈时TP设为0
+        sl = self.sl.value() if not self.dynamic_sl.isChecked() else 0
+        tp = self.tp.value() if not self.dynamic_tp.isChecked() else 0
         dynamic_sl = self.dynamic_sl.isChecked()
         dynamic_tp = self.dynamic_tp.isChecked()
 
@@ -426,6 +432,29 @@ class TradingTab(QMainWindow):
         self.total_profit_label.setText(f"总盈亏: ${total_profit:.2f}")
         self.history_profit_label.setText(f"历史交易盈亏: ${history_profit:.2f}")
         self.win_rate_label.setText(f"胜率: {win_rate:.2f}%")
+
+        # 更新动态参数显示
+        strategy = self.mt5_handler.strategy_instance
+        if strategy and hasattr(strategy, 'get_dynamic_parameters'):
+            try:
+                symbol = self.symbol_combo.currentText()
+                if symbol:
+                    data = self.mt5_handler.get_ohlc_data(symbol, timeframe=mt5.TIMEFRAME_M1, count=61)
+                    if not data.empty:
+                        atr = strategy.calculate_atr(data)
+                        current_atr = atr.iloc[-1]
+                        current_price = data['close'].iloc[-1]
+                        normalized_atr = current_atr / current_price if current_price != 0 else 0.002
+                        rsi_buy, rsi_sell, atr_thresh, cooling = strategy.get_dynamic_parameters(data, normalized_atr)
+                        self.rsi_threshold_label.setText(f"RSI阈值: 买入 {rsi_buy}, 卖出 {rsi_sell}")
+                        self.atr_threshold_label.setText(f"ATR阈值: {atr_thresh:.4f}")
+                        self.cooling_period_label.setText(f"冷静期: {cooling}秒")
+                    else:
+                        self.rsi_threshold_label.setText("RSI阈值: 未获取")
+                        self.atr_threshold_label.setText("ATR阈值: 未获取")
+                        self.cooling_period_label.setText("冷静期: 未获取")
+            except Exception as e:
+                print(f"更新动态参数失败: {str(e)}")
 
 if __name__ == "__main__":
     from PyQt5.QtWidgets import QApplication

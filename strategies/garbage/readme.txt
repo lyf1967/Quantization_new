@@ -1,1 +1,0 @@
-v3_ma_dynamic_stop_loss_0712.py: 优化max_profit_list
