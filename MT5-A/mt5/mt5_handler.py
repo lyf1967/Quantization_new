@@ -343,7 +343,8 @@ class MT5Handler:
         
         adjusted_tp = 0.0
         adjusted_sl = 0.0
-        
+
+        # 动态止盈
         if not dynamic_tp and tp > 0.0:
             adjusted_tp = price + (tp * point) if trade_type == 'buy' else price - (tp * point)
             if trade_type == 'buy' and adjusted_tp <= price:
@@ -353,7 +354,8 @@ class MT5Handler:
                 print(f"{datetime.now()}: 止盈点位 {adjusted_tp:.2f} 大于等于开仓价格 {price:.2f}，设置无效")
                 adjusted_tp = 0.0
             print(f"{datetime.now()}: 计算止盈 - 开仓价格: {price:.2f}, 用户设置TP: {tp}, 点值: {point}, 调整后TP: {adjusted_tp:.2f}")
-        
+
+        # 动态止损
         if not dynamic_sl and sl > 0.0:
             adjusted_sl = price - (sl * point) if trade_type == 'buy' else price + (sl * point)
             if trade_type == 'buy' and adjusted_sl >= price:

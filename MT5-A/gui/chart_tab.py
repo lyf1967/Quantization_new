@@ -544,7 +544,7 @@ class TradingWorker(QObject):
         self.max_positions = max_positions
         self.dynamic_sl = dynamic_sl
         self.dynamic_tp = dynamic_tp
-        self.price_change_threshold = 0.003  # 价格变化百分比阈值（1%） 基线值：0.01  ori: 0.003
+        self.price_change_threshold = 0.0025  # 价格变化百分比阈值  ori: 0.003
         self.profit_change_threshold = -0.2
         # 新增止损参数
         # self.max_drawdown = -50  # 最大允许亏损金额（单位：美元）
@@ -560,6 +560,7 @@ class TradingWorker(QObject):
         self.prev_profit = 0
         self.max_profix = 0
         self.max_stop_loss_time = 120*60
+        self.is_stop_loss = 0 # 是否开启止损，默认不开启
 
     # 新增方法：平仓所有持仓
     def close_all_positions(self):
@@ -576,30 +577,6 @@ class TradingWorker(QObject):
                 )
             except Exception as e:
                 self.parent.ai_log_signal.emit(f"平仓失败 #{position['ticket']}: {str(e)}")
-
-    # def calculate_technical_indicators(self, df, drop_nan=True):
-    #     df['rsi'] = ta.rsi(df['close'], length=14)
-    #     df['atr'] = ta.atr(df['high'], df['low'], df['close'], length=14)
-    #     macd = ta.macd(df['close'], fast=12, slow=26, signal=9)
-    #     df['macd'] = macd['MACD_12_26_9']
-    #     df['macd_signal'] = macd['MACDs_12_26_9']
-    #     bollinger = ta.bbands(df['close'], length=20, std=2)
-    #     df['bb_upper'] = bollinger['BBU_20_2.0']
-    #     df['bb_middle'] = bollinger['BBM_20_2.0']
-    #     df['bb_lower'] = bollinger['BBL_20_2.0']
-    #     df['obv'] = ta.obv(df['close'], df['tick_volume'])
-    #     df['typical_price'] = (df['high'] + df['low'] + df['close']) / 3
-    #     df['vwap'] = ta.vwap(df['high'], df['low'], df['close'], df['tick_volume'])
-    #     if drop_nan:
-    #         df = df.dropna()
-    #         return df
-    
-    #     df = df.fillna(method='ffill').fillna(method='bfill')
-    #     # 二次检查：若仍有NaN则删除（通常不会出现）
-    #     if df.isnull().values.any():
-    #         print(f"填充后仍有{df.isnull().sum().sum()}个NaN，执行最终清理")
-    #         df = df.dropna()
-    #     return df
 
 
     def run(self):
@@ -633,7 +610,7 @@ class TradingWorker(QObject):
 
         open_time = datetime.now()
         while not self.parent.stop_trading_flag:
-            # 检查静默状态（10分钟内不交易）[1,2](@ref)
+            # 检查静默状态（10分钟内不交易）
             # if self.last_stop_time and (time.time() - self.last_stop_time) < self.silence_period:
             #     # 显示剩余静默时间
             #     remaining = int(self.silence_period - (time.time() - self.last_stop_time))
@@ -659,7 +636,7 @@ class TradingWorker(QObject):
                 continue
 
             try:
-                # 新增：账户盈亏检查（在现有代码前插入）[1,2](@ref)
+                # 新增：账户盈亏检查（在现有代码前插入）
                 account_info = self.parent.mt5_handler.get_account_info()
                 self.parent.ai_log_signal.emit(f"单次交易手数:{self.volume}")
 
@@ -667,11 +644,11 @@ class TradingWorker(QObject):
                 time_pass = (current_time - open_time).total_seconds()
                 self.parent.ai_log_signal.emit(f"open_time:{open_time}, current_time:{current_time}, time_pass:{time_pass}")
     
-                if account_info and ((account_info['profit'] <= self.max_drawdown) or (account_info['profit'] < 0 and time_pass > self.max_stop_loss_time)):
+                if self.is_stop_loss and account_info and ((account_info['profit'] <= self.max_drawdown) or (account_info['profit'] < 0 and time_pass > self.max_stop_loss_time)):
                     self.parent.ai_log_signal.emit(
                         f"⚠️ 触发总止损：浮动亏损 {account_info['profit']:.2f} 已达阈值 {self.max_drawdown}，平仓所有单"
                     )
-                    self.close_all_positions()  # 平仓所有持仓[3,4](@ref)
+                    self.close_all_positions()  # 平仓所有持仓
                     self.prev_profit = 0
                     self.max_profix = 0
                     self.last_stop_loss_time = time.time()  # 记录止损时间
@@ -704,7 +681,7 @@ class TradingWorker(QObject):
                         self.parent.ai_log_signal.emit(
                             f"⚠️ 触发总止盈：浮动盈利 {account_info['profit']:.2f} 已达阈值 {self.take_profit / self.max_positions * current_postion_num}，平仓所有单"
                         )
-                        self.close_all_positions()  # 平仓所有持仓[3,4](@ref)
+                        self.close_all_positions()  # 平仓所有持仓
                         self.prev_profit = 0
                         self.max_profix = 0
                         self.last_take_profit_time = time.time()  # 记录止盈时间
