@@ -407,7 +407,7 @@ class MT5Handler:
             "volume": pos.volume
         } for pos in positions]
         
-    def start_auto_trading(self, strategy_path, symbol, volume, sl, tp, dynamic_sl=False, dynamic_tp=False, trade_mode='both'):
+    def start_auto_trading(self, strategy_path, symbol, volume, sl, tp, dynamic_sl=False, dynamic_tp=False, trade_mode='both', addon_mode='multiple'):
         self.stop_trading_flag = False
         
         if not self.symbol_info(symbol):
@@ -434,11 +434,11 @@ class MT5Handler:
             def trading_loop():
                 self.strategy_instance = None
                 if hasattr(strategy_module, 'UltraHighFreqXAUUSD'):
-                    self.strategy_instance = strategy_module.UltraHighFreqXAUUSD(handler=self, dynamic_sl_enabled=dynamic_sl, dynamic_tp_enabled=dynamic_tp, current_initial_volume=volume, trade_mode=trade_mode)
+                    self.strategy_instance = strategy_module.UltraHighFreqXAUUSD(handler=self, dynamic_sl_enabled=dynamic_sl, dynamic_tp_enabled=dynamic_tp, current_initial_volume=volume, trade_mode=trade_mode, addon_mode=addon_mode)
                 elif hasattr(strategy_module, 'HighFreqXAUUSD'):
-                    self.strategy_instance = strategy_module.HighFreqXAUUSD(handler=self, dynamic_sl_enabled=dynamic_sl, dynamic_tp_enabled=dynamic_tp, current_initial_volume=volume, trade_mode=trade_mode)
+                    self.strategy_instance = strategy_module.HighFreqXAUUSD(handler=self, dynamic_sl_enabled=dynamic_sl, dynamic_tp_enabled=dynamic_tp, current_initial_volume=volume, trade_mode=trade_mode, addon_mode=addon_mode)
                 elif hasattr(strategy_module, 'RSIHighFreqXAUUSD'):
-                    self.strategy_instance = strategy_module.RSIHighFreqXAUUSD(handler=self, dynamic_sl_enabled=dynamic_sl, dynamic_tp_enabled=dynamic_tp, current_initial_volume=volume, trade_mode=trade_mode)
+                    self.strategy_instance = strategy_module.RSIHighFreqXAUUSD(handler=self, dynamic_sl_enabled=dynamic_sl, dynamic_tp_enabled=dynamic_tp, current_initial_volume=volume, trade_mode=trade_mode, addon_mode=addon_mode)
                 
                 # 如果启用动态止损或动态止盈，启动监控
                 if (dynamic_sl or dynamic_tp) and self.strategy_instance and hasattr(self.strategy_instance, 'start_dynamic_sl_monitor'):

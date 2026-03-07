@@ -196,6 +196,19 @@ class TradingTab(QMainWindow):
         self.sell_only_radio.toggled.connect(self.update_trade_mode)
         self.both_radio.toggled.connect(self.update_trade_mode)
 
+        # 新增：加仓策略选择
+        addon_layout = QHBoxLayout()
+        addon_layout.addWidget(QLabel("加仓策略："))
+        self.addon_single = QRadioButton("单次")
+        self.addon_multiple = QRadioButton("多次")
+        self.addon_single.setChecked(True)  # 默认“单次”
+        addon_layout.addWidget(self.addon_single)
+        addon_layout.addWidget(self.addon_multiple)
+        addon_widget = QFrame()
+        addon_widget.setLayout(addon_layout)
+        trading_layout.addWidget(addon_widget)
+
+
         trading_layout.addLayout(mode_layout)
 
         strategy_layout = QHBoxLayout()
@@ -364,6 +377,9 @@ class TradingTab(QMainWindow):
         dynamic_sl = self.dynamic_sl.isChecked()
         dynamic_tp = self.dynamic_tp.isChecked()
 
+        # 新增：获取加仓策略
+        addon_mode = 'single' if self.addon_single.isChecked() else 'multiple'
+
         if not strategy_path:
             self.status_bar.showMessage("请选择策略文件", 5000)
             return
@@ -376,7 +392,7 @@ class TradingTab(QMainWindow):
         if not dynamic_sl and not dynamic_tp and sl <= 0 and tp <= 0:
             self.status_bar.showMessage("请设置止损或止盈点位，或启用动态止损/止盈", 5000)
             return
-        if self.mt5_handler.start_auto_trading(strategy_path, symbol, volume, sl, tp, dynamic_sl=dynamic_sl, dynamic_tp=dynamic_tp, trade_mode=self.trade_mode):
+        if self.mt5_handler.start_auto_trading(strategy_path, symbol, volume, sl, tp, dynamic_sl=dynamic_sl, dynamic_tp=dynamic_tp, trade_mode=self.trade_mode, addon_mode=addon_mode):
             self.status_label.setText(f"状态: 运行中 - 品种: {symbol}")
             self.trade_count_label.setText("交易次数: 0")
             self.update_trade_stats()
