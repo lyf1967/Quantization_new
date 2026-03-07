@@ -28,7 +28,8 @@ class RSIHighFreqXAUUSD:
                  addon_tp_mins=[1.5, 3*1, 9*0.5],  # 各级最小止盈（0.01手美元），初始1.5，第一加仓后3.0，第二后0.0  [1.5, 3.0, 0.0]
                  max_positions = 1,
                  current_initial_volume = 0.01,
-                 trade_mode='both'
+                 trade_mode='both',
+                 addon_mode='multiple'  # 新增：加仓模式，默认'multiple'
                  ):
         self.handler = handler
         self.max_positions = max_positions # 移除限制
@@ -67,6 +68,7 @@ class RSIHighFreqXAUUSD:
         self.current_level = 0  # 当前加仓级别: 0初始,1第一加仓,2第二加仓
         self.current_direction = None  # 'buy' or 'sell'
         self.trade_mode = trade_mode
+        self.max_addon_level = 1 if addon_mode == 'single' else len(self.addon_loss_thresholds)
 
     def is_in_cooling_period(self):
         """检查是否处于冷静期"""
@@ -333,16 +335,17 @@ class RSIHighFreqXAUUSD:
                         self.current_direction = None
 
                 # 加仓逻辑（取代止损，最多两次）
-                if self.dynamic_sl_enabled:
-                    if self.current_level < len(self.addon_loss_thresholds):
-                        loss_threshold = self.addon_loss_thresholds[self.current_level] * scale
-                        add_times = self.add_times_list[self.current_level]
-                        if total_profit <= loss_threshold:
-                            add_volume = add_times * total_volume
-                            print(f"{datetime.now()}: 触发加仓 - 级别: {self.current_level+1}, 品种: {symbol}, 亏损: {total_profit:.2f}, 加仓手数: {add_volume}")
-                            self.handler.execute_trade(symbol, add_volume, 0, 0, pos_type, self.dynamic_sl_enabled, self.dynamic_tp_enabled)  # 加仓同方向，无SL/TP
-                            self.current_level += 1
-                            self.last_dynamic_stop_loss_time = datetime.now()  # 加仓视为止损触发
+                # if self.dynamic_sl_enabled:
+                    # 修改：使用 self.max_addon_level 限制级别
+                if self.current_level < self.max_addon_level:
+                    loss_threshold = self.addon_loss_thresholds[self.current_level] * scale
+                    add_times = self.add_times_list[self.current_level]
+                    if total_profit <= loss_threshold:
+                        add_volume = add_times * total_volume
+                        print(f"{datetime.now()}: 触发加仓 - 级别: {self.current_level+1}, 品种: {symbol}, 亏损: {total_profit:.2f}, 加仓手数: {add_volume}")
+                        self.handler.execute_trade(symbol, add_volume, 0, 0, pos_type, self.dynamic_sl_enabled, self.dynamic_tp_enabled)  # 加仓同方向，无SL/TP
+                        self.current_level += 1
+                        self.last_dynamic_stop_loss_time = datetime.now()  # 加仓视为止损触发
 
                 # # 休市前平仓：仅当单数==1时
                 # if self.is_close_to_market_close() and len(positions) == 1:
