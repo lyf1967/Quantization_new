@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QComboBox, QLineEdit, QPushButton, QFileDialog, 
                             QLabel, QDoubleSpinBox, QTextEdit, QStatusBar, QToolBar, QMainWindow, 
-                            QSizePolicy, QFrame, QTabWidget, QTableWidget, QTableWidgetItem, QHeaderView, QCheckBox)
+                            QSizePolicy, QFrame, QTabWidget, QTableWidget, QTableWidgetItem, QHeaderView, QCheckBox, QRadioButton)
 from PyQt5.QtCore import Qt, QTimer, QSize
 from PyQt5.QtGui import QIcon, QPalette, QColor
 from mt5.mt5_handler import MT5Handler
@@ -41,6 +41,7 @@ class TradingTab(QMainWindow):
         self.stats_timer.start(5000)
 
         self.update_trade_stats()
+        self.trade_mode = 'both'
 
     def init_ui(self):
         central_widget = QWidget()
@@ -51,7 +52,7 @@ class TradingTab(QMainWindow):
             QMainWindow {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2e2b44, stop:1 #1e1e2e);
             }
-            QLabel, QLineEdit, QDoubleSpinBox, QComboBox, QTextEdit, QStatusBar, QTableWidget, QCheckBox {
+            QLabel, QLineEdit, QDoubleSpinBox, QComboBox, QTextEdit, QStatusBar, QTableWidget, QCheckBox, QRadioButton {
                 color: #ffffff;
                 font-family: 'Segoe UI', Arial;
             }
@@ -149,6 +150,9 @@ class TradingTab(QMainWindow):
             QCheckBox {
                 padding: 5px;
             }
+            QRadioButton {
+                padding: 5px;
+            }              
         """)
 
         toolbar = QToolBar("Main Toolbar")
@@ -173,6 +177,27 @@ class TradingTab(QMainWindow):
         symbol_widget = QFrame()
         symbol_widget.setLayout(symbol_layout)
 
+        # 新增：交易模式选择
+        mode_layout = QHBoxLayout()
+        mode_label = QLabel("交易模式：")
+        mode_layout.addWidget(mode_label)
+
+        self.buy_only_radio = QRadioButton("仅多")
+        self.sell_only_radio = QRadioButton("仅空")
+        self.both_radio = QRadioButton("双向")
+        self.both_radio.setChecked(True)  # 默认双向
+
+        mode_layout.addWidget(self.buy_only_radio)
+        mode_layout.addWidget(self.sell_only_radio)
+        mode_layout.addWidget(self.both_radio)
+
+        # 连接信号
+        self.buy_only_radio.toggled.connect(self.update_trade_mode)
+        self.sell_only_radio.toggled.connect(self.update_trade_mode)
+        self.both_radio.toggled.connect(self.update_trade_mode)
+
+        trading_layout.addLayout(mode_layout)
+
         strategy_layout = QHBoxLayout()
         strategy_layout.addWidget(QLabel("交易策略："))
         self.strategy_path = QLineEdit()
@@ -193,12 +218,12 @@ class TradingTab(QMainWindow):
         params_layout.addWidget(QLabel("止损点位："))
         self.sl = QDoubleSpinBox()
         self.sl.setRange(0, 50000)
-        self.sl.setValue(50)
+        self.sl.setValue(0)
         params_layout.addWidget(self.sl)
         params_layout.addWidget(QLabel("止盈点位："))
         self.tp = QDoubleSpinBox()
         self.tp.setRange(0, 50000)
-        self.tp.setValue(100)
+        self.tp.setValue(0)
         params_layout.addWidget(self.tp)
         params_layout.addWidget(QLabel("动态止损："))
         self.dynamic_sl = QCheckBox("启用")
@@ -284,6 +309,14 @@ class TradingTab(QMainWindow):
         self.load_symbols()
         self.update_status()
 
+    def update_trade_mode(self):
+        if self.buy_only_radio.isChecked():
+            self.trade_mode = 'buy_only'
+        elif self.sell_only_radio.isChecked():
+            self.trade_mode = 'sell_only'
+        else:
+            self.trade_mode = 'both'
+
     def load_symbols(self):
         symbols = self.mt5_handler.get_symbols()
         self.symbol_combo.clear()
@@ -343,7 +376,7 @@ class TradingTab(QMainWindow):
         if not dynamic_sl and not dynamic_tp and sl <= 0 and tp <= 0:
             self.status_bar.showMessage("请设置止损或止盈点位，或启用动态止损/止盈", 5000)
             return
-        if self.mt5_handler.start_auto_trading(strategy_path, symbol, volume, sl, tp, dynamic_sl=dynamic_sl, dynamic_tp=dynamic_tp):
+        if self.mt5_handler.start_auto_trading(strategy_path, symbol, volume, sl, tp, dynamic_sl=dynamic_sl, dynamic_tp=dynamic_tp, trade_mode=self.trade_mode):
             self.status_label.setText(f"状态: 运行中 - 品种: {symbol}")
             self.trade_count_label.setText("交易次数: 0")
             self.update_trade_stats()

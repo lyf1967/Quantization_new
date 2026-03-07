@@ -21,13 +21,14 @@ class RSIHighFreqXAUUSD:
                  time_frame=5,  # 默认值5
                  long_periods=60,  # 长周期周期，默认60
                  long_atr_threshold_high=0.3,  # 长周期ATR高阈值，默认0.3
-                 strict_buy_rsi=54,  # 严格买入RSI，默认30
-                 strict_sell_rsi=55,  # 严格卖出RSI，默认70
+                 strict_buy_rsi=40,  # 严格买入RSI，默认30
+                 strict_sell_rsi=41,  # 严格卖出RSI，默认70
                  addon_loss_thresholds=[-0.2, -1],  # 加仓亏损阈值（0.01手美元），第一级-15，第二级-330  [-10, -330]
                  add_times_list = [3, 2], # 加仓倍数：第一次加仓3倍，第二次加仓2倍
                  addon_tp_mins=[0.1, 0.2, 0.3],  # 各级最小止盈（0.01手美元），初始1.5，第一加仓后累计4.8，第二后4  [1.5, 4.0, 4.8]
                  max_positions = 1,
-                 current_initial_volume = 0.01
+                 current_initial_volume = 0.01,
+                 trade_mode='both'
                  ):
         self.handler = handler
         self.max_positions = max_positions # 移除限制
@@ -65,6 +66,7 @@ class RSIHighFreqXAUUSD:
         self.current_initial_volume = current_initial_volume  # 默认，执行交易时更新
         self.current_level = 0  # 当前加仓级别: 0初始,1第一加仓,2第二加仓
         self.current_direction = None  # 'buy' or 'sell'
+        self.trade_mode = trade_mode
 
     def is_in_cooling_period(self):
         """检查是否处于冷静期"""
@@ -275,12 +277,16 @@ class RSIHighFreqXAUUSD:
                 print(f"{datetime.now()}: 卖出信号 - 品种: {symbol}, RSI: {current_rsi:.2f}")
             else:
                 print(f"{data.index[-1]}: 卖出信号 - 品种: {symbol}, RSI: {current_rsi:.2f}")
+            if self.trade_mode == "buy_only":
+                return None
             return 'sell'
         elif current_rsi < effective_buy_rsi:
             if not is_back_test:
                 print(f"{datetime.now()}: 买入信号 - 品种: {symbol}, RSI: {current_rsi:.2f}")
             else:
                 print(f"{data.index[-1]}: 买入信号 - 品种: {symbol}, RSI: {current_rsi:.2f}")
+            if self.trade_mode == "sell_only":
+                return None
             return 'buy'
 
         return None

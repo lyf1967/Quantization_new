@@ -28,7 +28,8 @@ class RSIHighFreqXAUUSD:
                  add_times_list = [2, 2], # 加仓倍数：第一次加仓2倍，第二次加仓2倍
                  addon_tp_mins=[2, 3*1, 9*0.5],  # 各级最小止盈（0.01手美元），初始2，第一加仓后3.0*1，第二后9*0.5  [2, 3.0*1, 9*0.5]
                  max_positions = 1,
-                 current_initial_volume = 0.01
+                 current_initial_volume = 0.01,
+                 trade_mode='both'
                  ):
         self.handler = handler
         self.max_positions = max_positions # 移除限制
@@ -66,6 +67,7 @@ class RSIHighFreqXAUUSD:
         self.current_initial_volume = current_initial_volume  # 默认，执行交易时更新
         self.current_level = 0  # 当前加仓级别: 0初始,1第一加仓,2第二加仓
         self.current_direction = None  # 'buy' or 'sell'
+        self.trade_mode = trade_mode
 
     def is_in_cooling_period(self):
         """检查是否处于冷静期"""
@@ -278,12 +280,16 @@ class RSIHighFreqXAUUSD:
                 print(f"{datetime.now()}: 卖出信号 - 品种: {symbol}, RSI: {current_rsi:.2f}")
             else:
                 print(f"{data.index[-1]}: 卖出信号 - 品种: {symbol}, RSI: {current_rsi:.2f}")
+            if self.trade_mode == "buy_only":
+                return None
             return 'sell'
         elif current_rsi < effective_buy_rsi:
             if not is_back_test:
                 print(f"{datetime.now()}: 买入信号 - 品种: {symbol}, RSI: {current_rsi:.2f}")
             else:
                 print(f"{data.index[-1]}: 买入信号 - 品种: {symbol}, RSI: {current_rsi:.2f}")
+            if self.trade_mode == "sell_only":
+                return None
             return 'buy'
 
         return None
