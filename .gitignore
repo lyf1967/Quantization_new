@@ -5,3 +5,5 @@ __pycache__/
 backtest_results*/
 data/
 目录结构.png
+backtest_res/
+garbage/
