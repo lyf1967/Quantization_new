@@ -30,7 +30,10 @@ class RSIHighFreqXAUUSD:
                  max_positions = 1,
                  current_initial_volume = 0.01,
                  trade_mode='both',
-                 addon_mode='multiple'  # 新增：加仓模式，默认'multiple'
+                 addon_mode='multiple',  # 新增：加仓模式，默认'multiple'
+                 # ================ 防爆仓 & 防误操作参数（最小改动） ================
+                 lock_loss_threshold=-120.0,          # 单次加仓模式下锁仓亏损阈值（0.01手美元）
+                 misoperation_loss_threshold=-130.0,  # 任何误操作强制锁仓阈值(0.01)
                  ):
         self.handler = handler
         self.max_positions = max_positions # 移除限制
@@ -69,7 +72,21 @@ class RSIHighFreqXAUUSD:
         self.current_level = 0  # 当前加仓级别: 0初始,1第一加仓,2第二加仓
         self.current_direction = None  # 'buy' or 'sell'
         self.trade_mode = trade_mode
+        self.addon_mode = addon_mode
         self.max_addon_level = 1 if addon_mode == 'single' else len(self.addon_loss_thresholds)
+
+        # ================ 防爆仓参数保存 ================
+        self.lock_loss_threshold = lock_loss_threshold
+        self.misoperation_loss_threshold = misoperation_loss_threshold
+        # 计算反向加仓总倍数和单次最大加仓倍数
+        total_multiple = 1
+        single_max_multiple = 1
+        for i in range(self.max_addon_level):
+            if i == self.max_addon_level - 1:
+                single_max_multiple = total_multiple * add_times_list[i]
+            total_multiple = total_multiple + total_multiple * add_times_list[i]
+        self.lock_opposite_multiplier = total_multiple
+        self.max_allowed_volume_multiplier = single_max_multiple
 
     def is_in_cooling_period(self):
         """检查是否处于冷静期"""
@@ -306,10 +323,20 @@ class RSIHighFreqXAUUSD:
                     continue
 
                 pos_type = 'buy' if positions[0].type == mt5.ORDER_TYPE_BUY else 'sell'
-                if self.current_direction is None:
-                    self.current_direction = pos_type
-                elif self.current_direction != pos_type:
-                    print(f"{datetime.now()}: 检测到混合方向持仓，跳过监控")
+                # if self.current_direction is None:
+                #     self.current_direction = pos_type
+                # elif self.current_direction != pos_type:
+                #     print(f"{datetime.now()}: 检测到混合方向持仓，跳过监控")
+                #     time.sleep(self.monitor_time_gap)
+                #     continue
+
+                # ================ 多空volume计算 + 完全对冲跳过（对应问题1） ================
+                buy_vol = sum(pos.volume for pos in positions if pos.type == mt5.ORDER_TYPE_BUY)
+                sell_vol = sum(pos.volume for pos in positions if pos.type == mt5.ORDER_TYPE_SELL)
+                max_single_vol = max((pos.volume for pos in positions), default=0)
+
+                if buy_vol == sell_vol and buy_vol > 0:
+                    print(f"{datetime.now()}: 完全对冲状态（多空volume相等），跳过监控")
                     time.sleep(self.monitor_time_gap)
                     continue
 
@@ -323,6 +350,29 @@ class RSIHighFreqXAUUSD:
                     self.max_profit_dict[symbol] = max(self.max_profit_dict[symbol], total_profit)
 
                 scale = current_initial_volume / 0.01
+
+
+                # ================ 防爆仓 & 防误操作核心逻辑 ================
+                if (total_profit <= self.misoperation_loss_threshold * scale or
+                    (self.addon_mode == 'single' and total_profit <= self.lock_loss_threshold * scale) or
+                    (self.addon_mode == 'single' and max_single_vol > current_initial_volume * self.max_allowed_volume_multiplier)):  # 修改：用max_single_vol（对应问题2）
+                    
+                    lock_volume = abs(buy_vol - sell_vol)  # 修改：差值（对应问题3）
+                    opposite_type = 'sell' if buy_vol > sell_vol else 'buy'  # 方向取volume小的那边（对应问题3）
+                    print(f"{datetime.now()}: 触发防爆仓/误操作锁仓 - 亏损: {total_profit:.2f}, 总手数: {total_volume}, 反向加仓: {opposite_type} {lock_volume:.2f}")
+                    
+                    success = self.handler.execute_trade(symbol, lock_volume, 0, 0, opposite_type, False, False)
+                    if success:
+                        print(f"{datetime.now()}: 锁仓成功，已完全对冲")
+                    else:
+                        print(f"{datetime.now()}: 锁仓失败（资金不足），立即平仓超大手数订单防止爆仓")
+                        for pos in positions:  # 修改：只平仓超大手数（对应问题4）
+                            if pos.volume > current_initial_volume * self.max_allowed_volume_multiplier:
+                                self.handler.close_specific_position(symbol, pos.ticket)
+                    
+                    time.sleep(1)
+                    continue  # 跳过原有动态止盈/加仓逻辑
+
 
                 # 动态止盈
                 if self.dynamic_tp_enabled and total_profit >= self.addon_tp_mins[self.current_level] * scale:
