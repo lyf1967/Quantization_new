@@ -22,22 +22,25 @@ class Backtester:
                  timeframe="5T",
                  initial_capital=10000.0,
                  lot_size=0.01,
-                 days_to_download=365,
                  data_folder=None,
-                 fee=18):
+                 addon_mode="single"
+                 ):
         self.handler = MT5Handler()
         self.symbol = symbol
         self.start_date_str = start_date
         self.end_date_str = end_date
-        self.start_date = datetime.strptime(start_date, "%Y-%m-%d")
-        self.end_date = datetime.strptime(end_date, "%Y-%m-%d")
+        self.start_date_str = self.start_date_str.replace(" ", "_").replace(":", "_")
+        self.end_date_str = self.end_date_str.replace(" ", "_").replace(":", "_")
+
+        # 支持时分秒格式（pd.to_datetime自动处理 "2026-01-01" 或 "2026-01-01 09:30:00"）
+        self.start_date = pd.to_datetime(start_date).to_pydatetime()
+        self.end_date = pd.to_datetime(end_date).to_pydatetime()
         self.initial_capital = initial_capital
-        self.balance = initial_capital  # 【修复1】增加余额追踪变量
+        self.balance = initial_capital
         self.lot_size = lot_size
         self.timeframe = timeframe
-        self.fee = fee
         self.unit_profit = UNIT_PROFIT_INFO[self.symbol]
-        self.days_to_download = days_to_download
+        self.addon_mode = addon_mode
 
         self.strategy = None
         if symbol == "USOILm":
@@ -47,13 +50,16 @@ class Backtester:
         else:
             raise ValueError(f"unknown symbol: {symbol}.")
 
-        self.strategy = RSIHighFreqXAUUSD(handler=None, current_initial_volume=lot_size)
+        self.strategy = RSIHighFreqXAUUSD(handler=None, current_initial_volume=lot_size, addon_mode=self.addon_mode)
         self.strategy.is_back_test = True
+        # ==================== 关键修复：跳过真实MT5持仓检查 ====================
+        self.strategy.max_positions = 999
+
         self.equity_curve = []
         self.trades = []
-        self.trade_records = []  # 新增：存储详细交易记录
+        self.trade_records = []
         self.data_folder = data_folder
-        self.current_tick_time = None  # 【修复2】保存当前 tick 时间供外部调用
+        self.current_tick_time = None
 
         if not self.data_folder:
             self.data_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backtest_res")
@@ -79,7 +85,7 @@ class Backtester:
                 current_start = batch_end
                 continue
             df_ticks = pd.DataFrame(ticks)
-            df_ticks['time'] = pd.to_datetime(df_ticks['time'], unit='s')
+            df_ticks['time'] = pd.to_datetime(df_ticks['time_msc'], unit='ms')
             all_ticks.append(df_ticks)
             current_start = batch_end
         if not all_ticks:
@@ -88,14 +94,14 @@ class Backtester:
         df = pd.concat(all_ticks)
         df = df[['time', 'bid', 'ask']]
         df.set_index('time', inplace=True)
-        df = df[~df.index.duplicated(keep='first')]  # 去重
+        # df = df[~df.index.duplicated(keep='first')]  # 去重
         print(f"下载tick数据完成: {len(df)} 条")
 
         save_path = os.path.join(save_folder, f"{self.symbol}_{self.start_date_str}_to_{self.end_date_str}.csv")
         df.to_csv(save_path)
         return df
 
-    def aggregate_to_ohlc(self, df_ticks, time_frame="5T"):
+    def aggregate_to_ohlc_old(self, df_ticks, time_frame="5T"):
         """将tick数据聚合为OHLC（根据策略timeframe）"""
         timeframe_str = {mt5.TIMEFRAME_M5: "5T",
                          mt5.TIMEFRAME_M1: "1T", }.get(self.timeframe, time_frame)  # '5T' 为5分钟
@@ -108,6 +114,31 @@ class Backtester:
         df_ohlc = df_ohlc.dropna()  # 去除空bar
         print(f"聚合OHLC完成: {len(df_ohlc)} 条bar")
         return df_ohlc
+    
+    def aggregate_to_ohlc(self, df_ticks, timeframe_str="1T", price_type="bid"):
+        """将tick数据聚合为OHLCV（根据策略timeframe），支持 bid/ask/mid"""
+        # 如果请求的是中间价 (mid) 且数据中没有这一列，则自动计算
+        if price_type == "mid" and "mid" not in df_ticks.columns:
+            # 为了避免修改原始传入的 DataFrame，可以根据需要决定是否 copy，这里直接添加列
+            df_ticks["mid"] = (df_ticks["bid"] + df_ticks["ask"]) / 2
+        
+        if not isinstance(df_ticks.index, pd.DatetimeIndex):
+            raise ValueError("传入的 df_ticks 必须以 datetime 作为 Index")
+
+        # 将原来写死的 'bid' 替换为传入的参数 price_type
+        agg_dict = {
+            price_type: ['first', 'max', 'min', 'last', 'count']
+        }
+        
+        # 执行重采样和聚合 (后续代码完全不需要改动)
+        df_ohlc = df_ticks.resample(timeframe_str).agg(agg_dict)
+        df_ohlc.columns = ['open', 'high', 'low', 'close', 'tick_volume']
+        df_ohlc = df_ohlc.dropna()
+        df_ohlc['tick_volume'] = df_ohlc['tick_volume'].astype(int)
+        print(f"聚合OHLC完成: {len(df_ohlc)} 条bar")
+        
+        return df_ohlc
+
 
     def run_backtest(self):
         """运行回测，模拟交易"""
@@ -118,9 +149,8 @@ class Backtester:
             df_ticks = pd.read_csv(save_path, index_col=0, parse_dates=True)
 
         save_path_agg = save_path.replace(".csv", "_agg.csv")
-        self.aggregate_to_ohlc(df_ticks, time_frame=self.timeframe).to_csv(save_path_agg)
+        self.aggregate_to_ohlc(df_ticks, timeframe_str=self.timeframe).to_csv(save_path_agg)
 
-        # 【修复1】初始化余额和初始净值
         self.balance = self.initial_capital
         current_equity = self.balance
         self.equity_curve.append((df_ticks.index[0], current_equity))
@@ -129,7 +159,7 @@ class Backtester:
         current_level = 0
         max_profit = 0
 
-        # 【修复2】动态劫持策略的冷静期判断函数，解决时间穿越问题
+        # 动态劫持策略的冷静期判断函数（原逻辑不变）
         def custom_cooling_check(*args):
             if self.strategy.last_dynamic_stop_loss_time is None and self.strategy.last_dynamic_take_profit_time is None:
                 return False
@@ -149,7 +179,6 @@ class Backtester:
                 self.strategy.last_dynamic_take_profit_time = None
                 return False
 
-        # 替换原策略基于 datetime.now() 的判断方法
         self.strategy.is_in_cooling_period = custom_cooling_check
 
         last_check_time = df_ticks.index[0]
@@ -162,39 +191,52 @@ class Backtester:
                         'close': df_ticks['bid'][0],
                         'tick_volume': 0}
 
+        # ==================== 新增：模拟实时每2秒判断信号（与实际交易完全一致） ====================
+        last_signal_check_time = df_ticks.index[0]
+        SIGNAL_CHECK_GAP = 1.0
+
         for idx, row in df_ticks.iterrows():
             tick_time = idx
-            self.current_tick_time = tick_time  # 【修复2】更新供冷却函数计算的时间
+            self.current_tick_time = tick_time
             tick_bid = row['bid']
             tick_ask = row['ask']
-            current_ohlc['tick_volume'] += 1
 
+            # ==================== 修复1：先判断跨bar，再更新当前bar（解决聚合bug） ====================
+            next_bar_start = current_bar_start + pd.Timedelta(self.timeframe)
+            if tick_time >= next_bar_start:
+                ohlc_data.append(current_ohlc.copy())
+                if len(ohlc_data) > 200:
+                    ohlc_data = ohlc_data[-200:]
+
+                current_bar_start = tick_time.floor(self.timeframe)
+                current_ohlc = {'time': current_bar_start,
+                                'open': tick_bid, 'high': tick_bid,
+                                'low': tick_bid, 'close': tick_bid,
+                                'tick_volume': 0}
+
+            # 更新当前bar（无论新旧）
+            current_ohlc['tick_volume'] += 1
             current_ohlc['high'] = max(current_ohlc['high'], tick_bid)
             current_ohlc['low'] = min(current_ohlc['low'], tick_bid)
             current_ohlc['close'] = tick_bid
 
-            next_bar_start = current_bar_start + pd.Timedelta(self.timeframe)
-            if tick_time >= next_bar_start:
-                ohlc_data.append(current_ohlc.copy())
+            # ==================== 修复2：每2秒判断信号（包含当前partial bar） ====================
+            if (tick_time - last_signal_check_time).total_seconds() >= SIGNAL_CHECK_GAP:
+                last_signal_check_time = tick_time
+                temp_ohlc_list = ohlc_data + [current_ohlc.copy()]
+                df_temp = pd.DataFrame(temp_ohlc_list).set_index('time')
 
-                # 【修复3】截断OHLC数组，防止随时间膨胀导致回测极大变慢
-                if len(ohlc_data) > 200:
-                    ohlc_data = ohlc_data[-200:]
+                # required_len = max(self.strategy.periods, self.strategy.long_periods) + 1
+                required_len = max(self.strategy.periods, self.strategy.long_periods) * 2
+                if len(df_temp) >= required_len:
+                    data_slice = df_temp.iloc[-required_len:]
 
-                df_ohlc = pd.DataFrame(ohlc_data).set_index('time')
-
-                required_len = max(self.strategy.periods, self.strategy.long_periods) + 1
-                if len(df_ohlc) >= required_len:
-                    data_slice = df_ohlc.iloc[-required_len:]
-
-                    # 【修复2】删除了你原本写的错误重置事件时间的代码 (self.strategy.last_dynamic_sl_time = tick_time)
                     if not self.strategy.is_in_cooling_period():
                         signal = self.strategy.get_signal(data_slice, self.symbol, is_reload_data=False,
                                                           is_back_test=True)
                         if signal and not positions:
                             direction = signal
-                            # bid: 市场上当前愿意买入合约的最高价格（买1） ；ask: 市场上当前愿意卖出合约的最低价格（卖1）
-                            open_price = tick_ask if direction == 'buy' else tick_bid  # buy用ask开，sell用bid开（模拟滑点）
+                            open_price = tick_ask if direction == 'buy' else tick_bid
                             volume = self.lot_size
                             positions.append(
                                 {'type': direction, 'volume': volume, 'open_price': open_price, 'open_time': tick_time})
@@ -202,10 +244,7 @@ class Backtester:
                             current_level = 0
                             max_profit = 0
 
-                current_bar_start = tick_time.floor(self.timeframe)
-                current_ohlc = {'time': current_bar_start, 'open': tick_bid, 'high': tick_bid, 'low': tick_bid,
-                                'close': tick_bid, 'tick_volume': 1}
-
+            # ==================== 原有30秒监控逻辑（100%不变） ====================
             if (tick_time - last_check_time).total_seconds() >= self.strategy.monitor_time_gap:
                 last_check_time = tick_time
                 if positions:
@@ -223,6 +262,32 @@ class Backtester:
                     max_profit = max(max_profit, total_profit)
                     scale = self.lot_size / 0.01
 
+                    # 防爆仓 & 防误操作逻辑，与 v2_ma_dynamic_stop_loss_btcusdm_add_strategy.py 和 v7_gallon_strategy_usoil.py 完全一致】
+                    # 触发时直接止损平仓（按用户要求），然后 continue 继续回测
+                    addon_mode = getattr(self.strategy, "addon_mode", self.addon_mode)
+                    misop_th = getattr(self.strategy, "misoperation_loss_threshold", -130.0)
+                    lock_th = getattr(self.strategy, "lock_loss_threshold", -120.0)
+                    max_allowed_mult = getattr(self.strategy, "max_allowed_volume_multiplier", 10.0)
+                    curr_init_vol = getattr(self.strategy, "current_initial_volume", self.lot_size)
+                    max_single_vol = max(pos["volume"] for pos in positions) if positions else 0
+                    max_level = len(self.strategy.add_times_list)
+                    if addon_mode == "single":
+                        max_level = 1
+
+                    if (total_profit <= misop_th * scale or
+                        (addon_mode == "single" and total_profit <= lock_th * scale) or
+                        (addon_mode == "single" and max_single_vol > curr_init_vol * max_allowed_mult)):
+                        print(f"{tick_time}: 触发防爆仓/误操作 - 亏损: {total_profit:.2f}，直接止损平仓")
+                        self.close_positions(positions, current_price, tick_time, "防爆仓止损", total_profit)
+                        positions = []
+                        max_profit = 0
+                        current_level = 0
+                        self.strategy.last_dynamic_stop_loss_time = tick_time
+                        if hasattr(self.strategy, "current_level"):
+                            self.strategy.current_level = 0
+                        self.equity_curve.append((tick_time, self.balance))
+                        continue
+
                     if self.strategy.dynamic_tp_enabled and total_profit >= self.strategy.addon_tp_mins[
                         current_level] * scale:
                         profit_change = (total_profit - max_profit) / max_profit if max_profit > 0 else 0
@@ -232,12 +297,12 @@ class Backtester:
                             max_profit = 0
                             current_level = 0
                             self.strategy.last_dynamic_take_profit_time = tick_time
-                            self.equity_curve.append((tick_time, self.balance))  # 【修复1】记录平仓后的准确净值
+                            self.equity_curve.append((tick_time, self.balance))
                             continue
 
                     if self.strategy.dynamic_sl_enabled and current_level < len(self.strategy.addon_loss_thresholds):
                         loss_threshold = self.strategy.addon_loss_thresholds[current_level] * scale
-                        if total_profit <= loss_threshold:
+                        if total_profit <= loss_threshold and current_level < max_level:
                             add_times = self.strategy.add_times_list[current_level]
                             total_volume = sum(pos['volume'] for pos in positions)
                             add_volume = add_times * total_volume
@@ -246,17 +311,27 @@ class Backtester:
                             positions.append({'type': pos_type, 'volume': add_volume, 'open_price': add_open_price,
                                               'open_time': tick_time})
                             print(f"{tick_time}: 加仓 {pos_type}，手数 {add_volume}，级别 {current_level + 1}")
+
+                            self.trade_records.append({
+                                'open_time': tick_time,
+                                'open_price': add_open_price,
+                                'volume': add_volume,
+                                'close_time': None,
+                                'close_price': None,
+                                'profit': 0.0,
+                                'reason': f'加仓级别 {current_level + 1}'
+                            })
+
                             current_level += 1
                             self.strategy.last_dynamic_stop_loss_time = tick_time
 
-                    # 【修复1】使用 balance 追踪浮动净值，而非 initial_capital
                     current_equity = self.balance + total_profit
                     self.equity_curve.append((tick_time, current_equity))
 
+        # 回测结束强制平仓（原逻辑不变）
         if positions:
             final_bid = df_ticks['bid'][-1]
             final_ask = df_ticks['ask'][-1]
-            # bid: 市场上当前愿意买入合约的最高价格（买1） ；ask: 市场上当前愿意卖出合约的最低价格（卖1）
             final_price = final_bid if positions[0]['type'] == 'buy' else final_ask
             total_profit = 0
             for pos in positions:
@@ -266,7 +341,7 @@ class Backtester:
                     profit = (pos['open_price'] - final_price) * (pos['volume']/0.01) * self.unit_profit
                 total_profit += profit
             self.close_positions(positions, final_price, df_ticks.index[-1], '回测结束', total_profit)
-            self.equity_curve.append((df_ticks.index[-1], self.balance))  # 【修复1】回测结束强制平仓后的收尾
+            self.equity_curve.append((df_ticks.index[-1], self.balance))
 
         self.generate_report()
 
@@ -280,7 +355,7 @@ class Backtester:
         print(
             f"{close_time}: 平仓 {direction}，价格 {close_price}，手数 {total_volume}，原因: {reason}，利润: {profit:.2f}")
         self.trades.append({'time': close_time, 'type': direction, 'profit': profit})
-        # 新增：记录详细交易信息
+        # 记录详细交易信息
         self.trade_records.append({
             'open_time': open_time,
             'open_price': weighted_open_price,
@@ -290,7 +365,7 @@ class Backtester:
             'profit': profit,
             'reason': reason
         })
-        self.balance += profit  # 【新增】更新余额，将实现的profit添加到balance
+        self.balance += profit  # 更新余额，将实现的profit添加到balance
 
     def generate_report(self):
         """生成回测报告，包括收益和回撤率"""
@@ -308,7 +383,7 @@ class Backtester:
         print(f"交易次数: {num_trades}")
         print(f"胜率: {win_rate:.2f}%")
 
-        # 新增：将交易记录保存到CSV
+        # 将交易记录保存到CSV
         if self.trade_records:
             trade_df = pd.DataFrame(self.trade_records)
             trade_df.to_csv(os.path.join(self.data_folder, 'trade_records.csv'), index=False, encoding="utf-8")
@@ -333,12 +408,14 @@ class Backtester:
 
 
 if __name__ == "__main__":
-    timeframe = "5T"  # "1T": 1min, "5T": 5min
-    first_volume = 0.01  # 第一次下单量
-    backtester = Backtester(symbol="USOILm",
-                            start_date="2026-01-01",
-                            end_date="2026-03-06",
+    timeframe = "1T"  # "1T": 1min (btcusdm), "5T": 5min (usoilm)
+    first_volume = 0.1  # 第一次下单量
+    addon_mode = "single" # 加仓模式：单次加仓
+    backtester = Backtester(symbol="BTCUSDm",
+                            start_date="2026-03-01 18:20:00",  # 支持 "2026-01-01 09:30:00"
+                            end_date="2026-03-15 08:10:00",  # 北京时间，mt5上的时间+8，实际下载的数据时间是美国时间
                             timeframe=timeframe,
                             initial_capital=10000.0,  # 初始本金
-                            lot_size=first_volume)
+                            lot_size=first_volume,
+                            addon_mode=addon_mode)
     backtester.run_backtest()

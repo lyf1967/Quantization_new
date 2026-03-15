@@ -85,8 +85,8 @@ class RSIHighFreqXAUUSD:
             if i == self.max_addon_level - 1:
                 single_max_multiple = total_multiple * add_times_list[i]
             total_multiple = total_multiple + total_multiple * add_times_list[i]
-        self.lock_opposite_multiplier = total_multiple
-        self.max_allowed_volume_multiplier = single_max_multiple
+        self.lock_opposite_multiplier = total_multiple  # 反向加仓总倍数
+        self.max_allowed_volume_multiplier = single_max_multiple  # 最大加仓倍数
 
     def is_in_cooling_period(self):
         """检查是否处于冷静期"""
