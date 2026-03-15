@@ -338,7 +338,7 @@ class TradingTab(QMainWindow):
             return
         for symbol in symbols:
             self.symbol_combo.addItem(symbol)
-        index = self.symbol_combo.findText("XAUUSD")
+        index = self.symbol_combo.findText("BTCUSDm")
         if index >= 0:
             self.symbol_combo.setCurrentIndex(index)
 
