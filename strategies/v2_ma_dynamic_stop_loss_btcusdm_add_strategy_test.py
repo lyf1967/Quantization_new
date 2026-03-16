@@ -13,8 +13,8 @@ class RSIHighFreqXAUUSD:
                  sell_rsi=51,  # 默认值65
                  periods=30,  # 默认值30
                  atr_threshold=0.1, # 默认值0.1
-                 stop_loss_cooling=30*60, # 默认值30*60
-                 take_profit_cooling=5*60, # 默认值5*60
+                 stop_loss_cooling=10, # 默认值30*60
+                 take_profit_cooling=10, # 默认值5*60
                  max_stop_loss=-20, # 默认值-20，未使用（改为加仓）
                  min_take_profit=2,  # 默认值2，未使用（改为多级）
                  dynamic_tp_threshold=-0.2, # 默认值-0.2
@@ -32,7 +32,7 @@ class RSIHighFreqXAUUSD:
                  trade_mode='both',
                  addon_mode='multiple',  # 新增：加仓模式，默认'multiple'
                  # ================ 防爆仓 & 防误操作参数（最小改动） ================
-                 lock_loss_threshold=-0.5,          # 单次加仓模式下锁仓亏损阈值（0.01手美元）
+                 lock_loss_threshold=-1,          # 单次加仓模式下锁仓亏损阈值（0.01手美元）
                  misoperation_loss_threshold=-10.0,  # 任何误操作强制锁仓阈值(0.01)
                  ):
         self.handler = handler
@@ -94,14 +94,27 @@ class RSIHighFreqXAUUSD:
             with self.lock:  # 新增：使用锁保护整个检查和重置逻辑
                 if self.last_dynamic_stop_loss_time is None and self.last_dynamic_take_profit_time is None:
                     return False
-                self.last_dynamic_sl_time = self.last_dynamic_stop_loss_time
-                cooling_time_seconds = self.stop_loss_cooling_time_seconds
-                if self.last_dynamic_take_profit_time is not None:
-                    self.last_dynamic_sl_time = self.last_dynamic_take_profit_time
-                    cooling_time_seconds = self.take_profit_cooling_time_seconds
 
-                print(f"self.last_dynamic_stop_loss_time: {self.last_dynamic_stop_loss_time}, self.last_dynamic_take_profit_time: {self.last_dynamic_take_profit_time}")
-                print(f"cooling_time_seconds = {cooling_time_seconds}")
+                # ================ 修复冷却期判断逻辑被错误覆盖的严重Bug ================
+                t_sl = self.last_dynamic_stop_loss_time
+                t_tp = self.last_dynamic_take_profit_time
+
+                if t_sl is not None and t_tp is not None:
+                    # 取距离当前最近的时间为准
+                    if t_sl > t_tp:
+                        self.last_dynamic_sl_time = t_sl
+                        cooling_time_seconds = self.stop_loss_cooling_time_seconds
+                    else:
+                        self.last_dynamic_sl_time = t_tp
+                        cooling_time_seconds = self.take_profit_cooling_time_seconds
+                elif t_sl is not None:
+                    self.last_dynamic_sl_time = t_sl
+                    cooling_time_seconds = self.stop_loss_cooling_time_seconds
+                elif t_tp is not None:
+                    self.last_dynamic_sl_time = t_tp
+                    cooling_time_seconds = self.take_profit_cooling_time_seconds
+                else:
+                    return False
 
                 current_time = datetime.now()
                 elapsed = (current_time - self.last_dynamic_sl_time).total_seconds()
@@ -109,16 +122,14 @@ class RSIHighFreqXAUUSD:
                     print(f"{datetime.now()}: 处于冷静期，剩余 {cooling_time_seconds - elapsed:.0f} 秒，暂停生成信号")
                     return True
                 else:
-                    if elapsed >= cooling_time_seconds and self.last_dynamic_sl_time is not None:
-                        print(f"{datetime.now()}: 冷静期结束，继续生成交易信号")
-                        self.last_dynamic_sl_time = None  # 重置冷静期
-                        self.last_dynamic_stop_loss_time = None
-                        self.last_dynamic_take_profit_time = None
-
+                    print(f"{datetime.now()}: 冷静期结束，继续生成交易信号")
+                    self.last_dynamic_sl_time = None
+                    self.last_dynamic_stop_loss_time = None
+                    self.last_dynamic_take_profit_time = None
                     return False
-        # 锁失效
-        except:
-            raise RuntimeError("冷静期判断，锁失效")
+        except Exception as e:
+            print(f"冷静期判断错误: {e}")
+            return False
 
     def is_market_open(self):
         """检查市场是否开市（北京时间，周一6:10开启，周六4:40停止）"""
@@ -278,9 +289,9 @@ class RSIHighFreqXAUUSD:
             return None
 
         # 移除持仓数量上限检查
-        positions = mt5.positions_get()
+        positions = mt5.positions_get(symbol=symbol) if symbol else mt5.positions_get()
 
-        if len(positions) >= self.max_positions:
+        if positions and len(positions) >= self.max_positions:
             if not is_back_test:
                 print(f"{datetime.now()}: 持仓数量达到上限 ({self.max_positions})，暂停开仓")
             else:
@@ -319,10 +330,14 @@ class RSIHighFreqXAUUSD:
             try:
                 positions = mt5.positions_get(symbol=symbol)
                 if not positions:
+                    # ================ 彻底清理残留状态，防止异常加仓/止盈 ================
+                    self.current_level = 0
+                    self.max_profit_dict.pop(symbol, None)
+                    self.current_direction = None
                     time.sleep(self.monitor_time_gap)
                     continue
 
-                pos_type = 'buy' if positions[0].type == mt5.ORDER_TYPE_BUY else 'sell'
+                # pos_type = 'buy' if positions[0].type == mt5.ORDER_TYPE_BUY else 'sell'
                 # if self.current_direction is None:
                 #     self.current_direction = pos_type
                 # elif self.current_direction != pos_type:
@@ -335,14 +350,17 @@ class RSIHighFreqXAUUSD:
                 sell_vol = sum(pos.volume for pos in positions if pos.type == mt5.ORDER_TYPE_SELL)
                 max_single_vol = max((pos.volume for pos in positions), default=0)
 
-                if buy_vol == sell_vol and buy_vol > 0:
+                if abs(buy_vol - sell_vol) < 0.0001 and buy_vol > 0:
                     print(f"{datetime.now()}: 完全对冲状态（多空volume相等），跳过监控")
                     time.sleep(self.monitor_time_gap)
                     continue
 
+                # 主方向（更安全）
+                pos_type = 'buy' if buy_vol > sell_vol else 'sell'
+
                 total_profit = sum(pos.profit for pos in positions)
                 total_volume = sum(pos.volume for pos in positions)
-                current_price = mt5.symbol_info_tick(symbol).ask if pos_type == 'buy' else mt5.symbol_info_tick(symbol).bid
+                # current_price = mt5.symbol_info_tick(symbol).ask if pos_type == 'buy' else mt5.symbol_info_tick(symbol).bid
 
                 if symbol not in self.max_profit_dict:
                     self.max_profit_dict[symbol] = total_profit
@@ -357,7 +375,7 @@ class RSIHighFreqXAUUSD:
                     (self.addon_mode == 'single' and total_profit <= self.lock_loss_threshold * scale) or
                     (self.addon_mode == 'single' and max_single_vol > current_initial_volume * self.max_allowed_volume_multiplier)):  # 修改：用max_single_vol（对应问题2）
                     
-                    lock_volume = abs(buy_vol - sell_vol)  # 修改：差值（对应问题3）
+                    lock_volume = round(abs(buy_vol - sell_vol), 2)  # 修改：差值（对应问题3）
                     opposite_type = 'sell' if buy_vol > sell_vol else 'buy'  # 方向取volume小的那边（对应问题3）
                     print(f"{datetime.now()}: 触发防爆仓/误操作锁仓 - 亏损: {total_profit:.2f}, 总手数: {total_volume}, 反向加仓: {opposite_type} {lock_volume:.2f}")
                     
@@ -384,7 +402,6 @@ class RSIHighFreqXAUUSD:
                         self.last_dynamic_take_profit_time = datetime.now()
                         self.max_profit_dict.pop(symbol, None)
                         self.current_level = 0
-                        self.current_initial_volume = 0.01
                         self.current_direction = None
 
                 # 加仓逻辑（取代止损，最多两次）
@@ -394,7 +411,7 @@ class RSIHighFreqXAUUSD:
                     loss_threshold = self.addon_loss_thresholds[self.current_level] * scale
                     add_times = self.add_times_list[self.current_level]
                     if total_profit <= loss_threshold:
-                        add_volume = add_times * total_volume
+                        add_volume = round(add_times * total_volume, 2)
                         print(f"{datetime.now()}: 触发加仓 - 级别: {self.current_level+1}, 品种: {symbol}, 亏损: {total_profit:.2f}, 加仓手数: {add_volume}")
                         self.handler.execute_trade(symbol, add_volume, 0, 0, pos_type, self.dynamic_sl_enabled, self.dynamic_tp_enabled)  # 加仓同方向，无SL/TP
                         self.current_level += 1
