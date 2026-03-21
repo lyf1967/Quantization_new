@@ -83,9 +83,12 @@ class RSIHighFreqXAUUSD:
         for i in range(self.max_addon_level):
             if i == self.max_addon_level - 1:
                 single_max_multiple = total_multiple * add_times_list[i]
-            total_multiple = total_multiple + total_multiple * add_times_list[i] 
-        self.lock_opposite_multiplier = total_multiple
-        self.max_allowed_volume_multiplier = single_max_multiple
+            total_multiple = total_multiple + total_multiple * add_times_list[i]
+        self.lock_opposite_multiplier = total_multiple  # 反向加仓总倍数
+        self.max_allowed_volume_multiplier = single_max_multiple  # 最大加仓倍数
+
+        # 状态恢复标识
+        self._state_restored = False
 
     def is_in_cooling_period(self):
         """检查是否处于冷静期"""
@@ -323,6 +326,8 @@ class RSIHighFreqXAUUSD:
 
     def monitor_dynamic_sl(self, symbol, current_initial_volume=0.01):
         """动态止损和止盈监控逻辑（改为加仓）"""
+        intended_initial_volume = current_initial_volume
+
         while not self.stop_dynamic_sl_flag:
             try:
                 positions = mt5.positions_get(symbol=symbol)
@@ -331,16 +336,35 @@ class RSIHighFreqXAUUSD:
                     self.current_level = 0
                     self.max_profit_dict.pop(symbol, None)
                     self.current_direction = None
+                    self._state_restored = True  # 没有持仓，视为正常状态，不需要逆推
+                    current_initial_volume = intended_initial_volume
+                    self.current_initial_volume = intended_initial_volume
+
                     time.sleep(self.monitor_time_gap)
                     continue
 
-                # pos_type = 'buy' if positions[0].type == mt5.ORDER_TYPE_BUY else 'sell'
-                # if self.current_direction is None:
-                #     self.current_direction = pos_type
-                # elif self.current_direction != pos_type:
-                #     print(f"{datetime.now()}: 检测到混合方向持仓，跳过监控")
-                #     time.sleep(self.monitor_time_gap)
-                #     continue
+                # ================ 优化核心：状态恢复逻辑（防重启/断电） ================
+                if not getattr(self, '_state_restored', False):
+                    # 确定主方向：以持仓订单中时间最早的那一单作为主方向
+                    earliest_pos = min(positions, key=lambda p: p.time)
+                    main_type = earliest_pos.type
+                    main_positions = [pos for pos in positions if pos.type == main_type]
+
+                    if main_positions:
+                        # 从主方向中寻找最小手数作为基础初始手数
+                        self.current_initial_volume = min(pos.volume for pos in main_positions)
+                        # 基于单数反推级别（1单=0级，2单=1级...），且不超过设定的最大级别
+                        self.current_level = min(max(0, len(main_positions) - 1), self.max_addon_level)
+                    else:
+                        # 异常回退兜底
+                        self.current_initial_volume = min(pos.volume for pos in positions)
+                        self.current_level = 0
+
+                    current_initial_volume = self.current_initial_volume  # 同步给本方法内的局部计算变量
+                    self._state_restored = True
+                    direction_str = 'BUY' if main_type == mt5.ORDER_TYPE_BUY else 'SELL'
+                    print(
+                        f"{datetime.now()}: 检测到存量订单，已逆推恢复策略状态 - 初始手数: {current_initial_volume}, 当前加仓级别: {self.current_level}, 主方向: {direction_str}")
 
                 # ================ 多空volume计算 + 完全对冲跳过（对应问题1） ================
                 buy_vol = sum(pos.volume for pos in positions if pos.type == mt5.ORDER_TYPE_BUY)
@@ -352,8 +376,10 @@ class RSIHighFreqXAUUSD:
                     time.sleep(self.monitor_time_gap)
                     continue
 
-                # 主方向（更安全）
-                pos_type = 'buy' if buy_vol > sell_vol else 'sell'
+                # ================ 优化主方向判定 ================
+                # 主方向（统一使用最早订单方向，避免锁仓时判断漂移）
+                earliest_pos_loop = min(positions, key=lambda p: p.time)
+                pos_type = 'buy' if earliest_pos_loop.type == mt5.ORDER_TYPE_BUY else 'sell'
 
                 total_profit = sum(pos.profit for pos in positions)
                 total_volume = sum(pos.volume for pos in positions)
