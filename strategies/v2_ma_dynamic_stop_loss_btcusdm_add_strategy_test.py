@@ -294,7 +294,12 @@ class RSIHighFreqXAUUSD:
         # 移除持仓数量上限检查
         positions = mt5.positions_get(symbol=symbol) if symbol else mt5.positions_get()
 
-        if positions and len(positions) >= self.max_positions:
+        # 修复：防止网络异常返回None导致错误逻辑
+        if positions is None:
+            print(f"{datetime.now()}: 获取持仓数据异常，暂停信号生成")
+            return None
+
+        if len(positions) >= self.max_positions:
             if not is_back_test:
                 print(f"{datetime.now()}: 持仓数量达到上限 ({self.max_positions})，暂停开仓")
             else:
@@ -334,7 +339,14 @@ class RSIHighFreqXAUUSD:
         while not self.stop_dynamic_sl_flag:
             try:
                 positions = mt5.positions_get(symbol=symbol)
-                if not positions:
+
+                # 严格区分网络/API错误（None）与真实无持仓（空元组 ()）
+                if positions is None:
+                    print(f"{datetime.now()}: 无法获取持仓信息（可能API连接异常），跳过本次监控以防状态误重置")
+                    time.sleep(self.monitor_time_gap)
+                    continue
+
+                if len(positions) == 0:
                     # ================ 彻底清理残留状态，防止异常加仓/止盈 ================
                     self.current_level = 0
                     self.max_profit_dict.pop(symbol, None)
@@ -426,9 +438,9 @@ class RSIHighFreqXAUUSD:
                         for pos in positions:
                             self.handler.close_specific_position(symbol, pos.ticket)
                         self.last_dynamic_take_profit_time = datetime.now()
-                        self.max_profit_dict.pop(symbol, None)
-                        self.current_level = 0
-                        self.current_direction = None
+                        # 千万不要在此处直接重置状态 (如 self.current_level = 0)。
+                        # 若平仓请求被拒导致部分订单遗留，强制重置状态会导致下一次循环发生错误定级的异常加仓。
+                        # 这里保留状态，让下一轮循环开头的 len(positions) == 0 自然完成安全清理。
 
                 # 加仓逻辑（取代止损，最多两次）
                 # if self.dynamic_sl_enabled:
