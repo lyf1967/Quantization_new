@@ -1,6 +1,11 @@
 # QuantificationMt5
 Quantification use Mt5
 
+# 利润计算
+## BTCUSDm
+1手跳动一个点的利润是1，0.01手跳动一个点的利润是0.01
+
+
 
 # 手续费
 ## Usoil
