@@ -1,3 +1,6 @@
+# 版本信息
+v1_lock_20260410：锁仓稳定版本
+
 # QuantificationMt5
 Quantification use Mt5
 
